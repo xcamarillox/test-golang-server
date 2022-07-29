@@ -1,50 +1,51 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/gofiber/fiber/v2"
 )
 
 type CarSpecs struct {
-	make             string
-	model            string
-	year             int
-	engineCapacity   float32 //enlitros
-	color            string
-	transmissionType string // manual / automatica
-	fuelType         string //gasolina / diesel
-	isBrandNew       bool
+	Id               int
+	Make             string
+	Model            string
+	Year             int
+	EngineCapacity   float32 //enlitros
+	Color            string
+	TransmissionType string // manual / automatica
+	FuelType         string //gasolina / diesel
+	IsBrandNew       bool
+}
+
+var availableCars = []CarSpecs{
+	CarSpecs{
+		Id:               0,
+		Make:             "chevrolet",
+		Model:            "trax",
+		Year:             2015,
+		EngineCapacity:   1.8,
+		Color:            "roja",
+		TransmissionType: "automatica",
+		FuelType:         "gasolina",
+		IsBrandNew:       true,
+	},
+	CarSpecs{
+		Id:               1,
+		Make:             "ford",
+		Model:            "bronco",
+		Year:             2022,
+		EngineCapacity:   2.5,
+		Color:            "blanca",
+		TransmissionType: "automatica",
+		FuelType:         "gasolina",
+		IsBrandNew:       true,
+	},
 }
 
 func main() {
-	availableCars := []CarSpecs{
-		CarSpecs{
-			make:             "chevrolet",
-			model:            "trax",
-			year:             2015,
-			engineCapacity:   1.8,
-			color:            "roja",
-			transmissionType: "automatica",
-			fuelType:         "gasolina",
-			isBrandNew:       true,
-		},
-		CarSpecs{
-			make:             "ford",
-			model:            "bronco",
-			year:             2022,
-			engineCapacity:   2.5,
-			color:            "blanca",
-			transmissionType: "automatica",
-			fuelType:         "gasolina",
-			isBrandNew:       true,
-		},
-	}
-	fmt.Println(availableCars)
 
 	app := fiber.New()
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World!")
+		return c.Status(fiber.StatusOK).JSON(availableCars)
 	})
 
 	app.Listen(":3000")
