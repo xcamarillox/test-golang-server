@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -44,18 +43,22 @@ var availableCars = []CarSpecs{
 	},
 }
 
-func checkIfCarIsFound(id int) (bool, int) {
-	for index, car := range availableCars {
-		if car.Id == id {
-			return true, index
+func getMeAnIndexWithMyId(id string) int {
+	var checkIfIdOfCarIsFound = func(id int) int {
+		for index, car := range availableCars {
+			if car.Id == id {
+				return index
+			}
 		}
+		return -1
 	}
-	return false, 0
-}
 
-func checkIfIdIsCorrect(id string) (int, error) {
+	var carIndex int
 	idInt, err := strconv.Atoi(id)
-	return idInt, err
+	if err == nil {
+		carIndex = checkIfIdOfCarIsFound(idInt)
+	}
+	return carIndex
 }
 
 func main() {
@@ -65,45 +68,38 @@ func main() {
 		return c.Status(fiber.StatusOK).JSON(availableCars)
 	})
 	app.Post("/", func(c *fiber.Ctx) error {
-		return c.Status(fiber.StatusOK).JSON(availableCars)
+		carIndex := getMeAnIndexWithMyId(c.Params("id"))
+		if carIndex < 0 {
+			return c.SendStatus(404)
+		} else {
+			availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
+			return c.SendStatus(202)
+		}
 	})
 	app.Get("/:id", func(c *fiber.Ctx) error {
-		var existingId bool
-		var carIndex int
-		idInt, err := checkIfIdIsCorrect(c.Params("id"))
-		if err == nil {
-			existingId, carIndex = checkIfCarIsFound(idInt)
-		}
-		if err == nil && existingId {
+		carIndex := getMeAnIndexWithMyId(c.Params("id"))
+		if carIndex < 0 {
+			return c.SendStatus(404)
+		} else {
 			return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
 		}
-		return c.SendStatus(404)
 	})
 	app.Put("/:id", func(c *fiber.Ctx) error {
-		var existingId bool
-		var carIndex int
-		idInt, err := checkIfIdIsCorrect(c.Params("id"))
-		if err == nil {
-			existingId, carIndex = checkIfCarIsFound(idInt)
+		carIndex := getMeAnIndexWithMyId(c.Params("id"))
+		if carIndex < 0 {
+			return c.SendStatus(404)
+		} else {
+			return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
 		}
-		if err == nil && existingId {
-			//return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
-			fmt.Println(carIndex)
-		}
-		return c.SendStatus(404)
 	})
 	app.Delete("/:id", func(c *fiber.Ctx) error {
-		var existingId bool
-		var carIndex int
-		idInt, err := checkIfIdIsCorrect(c.Params("id"))
-		if err == nil {
-			existingId, carIndex = checkIfCarIsFound(idInt)
+		carIndex := getMeAnIndexWithMyId(c.Params("id"))
+		if carIndex < 0 {
+			return c.SendStatus(404)
+		} else {
+			availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
+			return c.SendStatus(202)
 		}
-		if err == nil && existingId {
-			//return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
-			fmt.Println(carIndex)
-		}
-		return c.SendStatus(404)
 	})
 	app.Listen(":3000")
 }
