@@ -68,13 +68,12 @@ func main() {
 		return c.Status(fiber.StatusOK).JSON(availableCars)
 	})
 	app.Post("/", func(c *fiber.Ctx) error {
-		carIndex := getMeAnIndexWithMyId(c.Params("id"))
-		if carIndex < 0 {
+		newCar := CarSpecs{}
+		if err := c.BodyParser(&newCar); err != nil {
 			return c.SendStatus(404)
-		} else {
-			availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
-			return c.SendStatus(202)
 		}
+		availableCars = append(availableCars, newCar)
+		return c.SendStatus(202)
 	})
 	app.Get("/:id", func(c *fiber.Ctx) error {
 		carIndex := getMeAnIndexWithMyId(c.Params("id"))
@@ -89,7 +88,13 @@ func main() {
 		if carIndex < 0 {
 			return c.SendStatus(404)
 		} else {
-			return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
+			carToEdit := CarSpecs{}
+			if err := c.BodyParser(&carToEdit); err != nil {
+				return c.SendStatus(400)
+			}
+			availableCars[carIndex] = carToEdit
+			availableCars[carIndex].Id = carIndex
+			return c.SendStatus(202)
 		}
 	})
 	app.Delete("/:id", func(c *fiber.Ctx) error {
