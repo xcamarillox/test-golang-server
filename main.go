@@ -43,22 +43,32 @@ var availableCars = []CarSpecs{
 	},
 }
 
-func getMeAnIndexWithMyId(id string) int {
-	var checkIfIdOfCarIsFound = func(id int) int {
-		for index, car := range availableCars {
-			if car.Id == id {
-				return index
-			}
+func getIndexOfIntId(id int) int {
+	for index, car := range availableCars {
+		if car.Id == id {
+			return index
 		}
-		return -1
 	}
+	return -1
+}
 
+func getIndexOfStringId(id string) (int, int) {
 	var carIndex int
 	idInt, err := strconv.Atoi(id)
 	if err == nil {
-		carIndex = checkIfIdOfCarIsFound(idInt)
+		carIndex = getIndexOfIntId(idInt)
+		return carIndex, idInt
 	}
-	return carIndex
+	return -1, -1
+}
+
+func getNewIntId() int {
+	for index := range availableCars {
+		if getIndexOfIntId(index) < 0 {
+			return index
+		}
+	}
+	return len(availableCars)
 }
 
 func main() {
@@ -70,13 +80,14 @@ func main() {
 	app.Post("/", func(c *fiber.Ctx) error {
 		newCar := CarSpecs{}
 		if err := c.BodyParser(&newCar); err != nil {
-			return c.SendStatus(404)
+			return c.SendStatus(400)
 		}
+		newCar.Id = getNewIntId()
 		availableCars = append(availableCars, newCar)
 		return c.SendStatus(202)
 	})
 	app.Get("/:id", func(c *fiber.Ctx) error {
-		carIndex := getMeAnIndexWithMyId(c.Params("id"))
+		carIndex, _ := getIndexOfStringId(c.Params("id"))
 		if carIndex < 0 {
 			return c.SendStatus(404)
 		} else {
@@ -84,7 +95,7 @@ func main() {
 		}
 	})
 	app.Put("/:id", func(c *fiber.Ctx) error {
-		carIndex := getMeAnIndexWithMyId(c.Params("id"))
+		carIndex, idInt := getIndexOfStringId(c.Params("id"))
 		if carIndex < 0 {
 			return c.SendStatus(404)
 		} else {
@@ -93,12 +104,12 @@ func main() {
 				return c.SendStatus(400)
 			}
 			availableCars[carIndex] = carToEdit
-			availableCars[carIndex].Id = carIndex
+			availableCars[carIndex].Id = idInt
 			return c.SendStatus(202)
 		}
 	})
 	app.Delete("/:id", func(c *fiber.Ctx) error {
-		carIndex := getMeAnIndexWithMyId(c.Params("id"))
+		carIndex, _ := getIndexOfStringId(c.Params("id"))
 		if carIndex < 0 {
 			return c.SendStatus(404)
 		} else {
