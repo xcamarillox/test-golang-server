@@ -19,7 +19,7 @@ type CarSpecs struct {
 }
 
 var availableCars = []CarSpecs{
-	CarSpecs{
+	{
 		Id:               0,
 		Make:             "chevrolet",
 		Model:            "trax",
@@ -30,7 +30,7 @@ var availableCars = []CarSpecs{
 		FuelType:         "gasolina",
 		IsBrandNew:       true,
 	},
-	CarSpecs{
+	{
 		Id:               1,
 		Make:             "ford",
 		Model:            "bronco",
@@ -72,7 +72,6 @@ func getNewIntId() int {
 }
 
 func main() {
-
 	app := fiber.New()
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(availableCars)
@@ -90,32 +89,30 @@ func main() {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
 		if carIndex < 0 {
 			return c.SendStatus(404)
-		} else {
-			return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
 		}
+		return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
 	})
 	app.Put("/:id", func(c *fiber.Ctx) error {
 		carIndex, idInt := getIndexOfStringId(c.Params("id"))
 		if carIndex < 0 {
 			return c.SendStatus(404)
-		} else {
-			carToEdit := CarSpecs{}
-			if err := c.BodyParser(&carToEdit); err != nil {
-				return c.SendStatus(400)
-			}
-			availableCars[carIndex] = carToEdit
-			availableCars[carIndex].Id = idInt
-			return c.SendStatus(202)
 		}
+		carToEdit := CarSpecs{}
+		if err := c.BodyParser(&carToEdit); err != nil {
+			return c.SendStatus(400)
+		}
+		availableCars[carIndex] = carToEdit
+		availableCars[carIndex].Id = idInt
+		return c.SendStatus(202)
+
 	})
 	app.Delete("/:id", func(c *fiber.Ctx) error {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
 		if carIndex < 0 {
 			return c.SendStatus(404)
-		} else {
-			availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
-			return c.SendStatus(202)
 		}
+		availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
+		return c.SendStatus(202)
 	})
 	app.Listen(":3000")
 }
