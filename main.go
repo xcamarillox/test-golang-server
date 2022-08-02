@@ -93,7 +93,7 @@ func getMeAReponseAndOrANewCar(c *fiber.Ctx, mode string, carIndex int) (int, Ca
 		}
 		if mode == "checkCarIndexAndImage" {
 			if _, err := c.FormFile("photo"); err != nil {
-				c.SendString("Debes enviar una imagen válida.")
+				c.SendString("Debes enviar una archivo de imagen válido. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente.")
 				return 404, newCar
 			}
 		}
@@ -147,6 +147,7 @@ func main() {
 		pathAndFile := fmt.Sprintf("/photos/%s", fileName)
 		availableCars[carIndex].PhotoPath = pathAndFile
 		c.SaveFile(file, "./public"+pathAndFile)
+		c.SendString("El recurso fue editado con exito.")
 		return c.SendStatus(202)
 	})
 
@@ -156,6 +157,7 @@ func main() {
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
+		carToEdit.PhotoPath = availableCars[carIndex].PhotoPath
 		availableCars[carIndex] = carToEdit
 		availableCars[carIndex].Id = idInt
 		c.SendString("El recurso fue editado con exito.")
