@@ -82,7 +82,7 @@ func getMeAReponseAndOrANewCar(c *fiber.Ctx, mode string, carIndex int) (int, Ca
 		}
 		if newCar.Year < 0 {
 			c.SendString("El año de manufactura del automóvil no puede ser negativo.")
-			return 400, newCar // Error code 400
+			return 400, newCar
 		}
 	}
 
@@ -143,7 +143,7 @@ func main() {
 			}
 			return c.SendStatus(404)
 		}
-		fileName := availableCars[carIndex].Model + "_" + strconv.Itoa(availableCars[carIndex].Year) + "-" + strconv.Itoa(availableCars[carIndex].Id) + "." + extension
+		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + extension
 		pathAndFile := fmt.Sprintf("/photos/%s", fileName)
 		availableCars[carIndex].PhotoPath = pathAndFile
 		c.SaveFile(file, "./public"+pathAndFile)
@@ -184,6 +184,9 @@ func main() {
 		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndex", carIndex)
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
+		}
+		if availableCars[carIndex].PhotoPath != "" {
+			os.Remove("./public" + availableCars[carIndex].PhotoPath)
 		}
 		availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
 		c.SendString("El recurso fue eliminado con exito.")
