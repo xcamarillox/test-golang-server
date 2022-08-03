@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"reto/awsAuxLib"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ type CarSpecs struct {
 	TransmissionType string  `json:"transmissionType"` // manual / automatica
 	IsBrandNew       bool    `json:"isBrandNew"`
 	PhotoPath        string  `json:"photoPath"`
+	PhotoURL         string  `json:"photoURL"`
 }
 
 var availableCars = []CarSpecs{
@@ -103,6 +105,10 @@ func getMeAReponseAndOrANewCar(c *fiber.Ctx, mode string, carIndex int) (int, Ca
 
 func main() {
 	app := fiber.New()
+
+	awsAuxLib.S3.Region = "us-east-1"
+	awsAuxLib.S3.NewSession(awsAuxLib.S3.Region)
+
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(availableCars)
 	})
@@ -148,6 +154,11 @@ func main() {
 		availableCars[carIndex].PhotoPath = pathAndFile
 		c.SaveFile(file, "./public"+pathAndFile)
 		c.SendString("El recurso fue editado con exito.")
+		awsAuxLib.S3.UploadObject("./public"+pathAndFile, "levita-uploads-dev", fileName)
+		c.SendString("URL del recurso:")
+		photoURL := awsAuxLib.S3.GenerateUrl("levita-uploads-dev", fileName)
+		c.SendString(photoURL)
+		availableCars[carIndex].PhotoURL = photoURL
 		return c.SendStatus(202)
 	})
 
@@ -175,8 +186,14 @@ func main() {
 			c.SendString("Error al eliminar archivo.")
 			return c.SendStatus(400)
 		}
+		splitStr := strings.Split(availableCars[carIndex].PhotoPath, ".")
+		extension := strings.ToLower(splitStr[len(splitStr)-1])
+		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + extension
+		//fmt.Println(fileName)
 		availableCars[carIndex].PhotoPath = ""
+		availableCars[carIndex].PhotoURL = ""
 		c.SendString("El recurso fue eliminado con exito.")
+		awsAuxLib.S3.DeleteObject(fileName, "levita-uploads-dev", fileName)
 		return c.SendStatus(200)
 	})
 	app.Delete("/:id", func(c *fiber.Ctx) error {
