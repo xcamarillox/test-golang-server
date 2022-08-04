@@ -2,7 +2,6 @@ package awsAuxLib
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -29,33 +28,34 @@ func exitErrorf(msg string, args ...interface{}) {
 }
 
 // Crea una nueva sesión
-func (t *S3Client) NewSession(region string) {
+func (t *S3Client) NewSession(region string) error {
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region)},
 	)
-
 	if err != nil {
 		exitErrorf("PROBLEMA DE SESSION CON S3, %v", err)
+		return err
 	}
 	t.Sess = sess
 	t.Svc = s3.New(t.Sess)
+	return err
 }
 
 /*
 	Lista todo lo que se pueda ver en s3 con la cuenta de AWS
 */
-func (t *S3Client) Ls() {
+func (t *S3Client) Ls() error {
 	result, err := t.Svc.ListBuckets(nil)
 	if err != nil {
 		exitErrorf("Unable to list buckets, %v", err)
+		return err
 	}
-
 	fmt.Println("Buckets:")
-
 	for _, b := range result.Buckets {
 		fmt.Printf("* %s created on %s\n",
 			aws.StringValue(b.Name), aws.TimeValue(b.CreationDate))
 	}
+	return err
 }
 
 /* Upload ó UploadObject:
@@ -66,38 +66,31 @@ Sube un archivo a s3
 - keyName string nombre del objeto final con la ruta completa pero sin el nombre del bucket
 */
 
-func (t *S3Client) Upload(filename string, myBucket string, keyName string) {
+func (t *S3Client) Upload(filename string, myBucket string, keyName string) (*s3manager.UploadOutput, error) {
 	uploader := s3manager.NewUploader(t.Sess)
 	f, err := os.Open(filename)
 	if err != nil {
-		fmt.Println(fmt.Errorf("failed to open file %q, %v", filename, err))
+		return nil, err
 	}
-	result, err := uploader.Upload(&s3manager.UploadInput{
+	resp, err := uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
 		Body:   f,
 	})
-	if err != nil {
-		fmt.Println(fmt.Errorf("failed to upload file, %v", err))
-	}
-	fmt.Println(result)
+	return resp, err
 }
 
-func (t *S3Client) UploadObject(filename string, myBucket string, keyName string) (resp *s3.PutObjectOutput) {
+func (t *S3Client) UploadObject(filename string, myBucket string, keyName string) (*s3.PutObjectOutput, error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	resp, err = t.Svc.PutObject(&s3.PutObjectInput{
+	resp, err := t.Svc.PutObject(&s3.PutObjectInput{
 		Body:   f,
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
 	})
-
-	if err != nil {
-		panic(err)
-	}
-	return resp
+	return resp, err
 }
 
 /* DeleteObject:
@@ -105,40 +98,52 @@ Borra un archivo del bucket de s3
 
 - filename string archivo local que deseas subir
 - myBucket string nombre del bucket en tu cuenta de s3
-- keyName string nombre del objeto final con la ruta completa pero sin el nombre del bucket
+- keyName string nombre del objeto final con la ruta completa
 */
 
-func (t *S3Client) DeleteObject(filename string, myBucket string, keyName string) (resp *s3.DeleteObjectOutput) {
+func (t *S3Client) DeleteObject(filename string, myBucket string, keyName string) (*s3.DeleteObjectOutput, error) {
 	resp, err := t.Svc.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
 	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(resp)
-	return resp
+	return resp, err
 }
 
-/*
-	Genera URL publico del objeto que se encuentre en el bucket (myBucket)
-	y que tenga el nombre que se ponga en (keyName)
+/*  GetFileUrl:
+Genera URL publico del objeto que se encuentre en el bucket (myBucket)
+y que tenga el nombre que se ponga en (keyName)
 
-	- myBucket string nombre del bucket en tu cuenta de s3
-	- keyName string nombre del objeto a descargar con la ruta
-				completa pero sin el nombre del bucket
+- myBucket string nombre del bucket en tu cuenta de s3
+- keyName string nombre del objeto a subur con la ruta completa
 */
-func (t *S3Client) GenerateUrl(myBucket string, keyName string) string {
+
+func (t *S3Client) GetFileUrl(myBucket string, keyName string) (string, error) {
 	req, _ := t.Svc.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
 	})
-	urlStr, err := req.Presign(15 * time.Minute)
+	urlStr, err := req.Presign(30 * time.Minute)
+	return urlStr, err
+}
 
+/* GetPresignedURL:
+Obtiene un presignedURL
+
+- filename string archivo local que deseas subir
+- myBucket string nombre del bucket en tu cuenta de s3
+- keyName string nombre del objeto final con la ruta completa pero sin el nombre del bucket
+*/
+
+func (t *S3Client) GetAPresignedURL(filename string, myBucket string, keyName string) (string, error) {
+	f, err := os.Open(filename)
 	if err != nil {
-		log.Println("Failed to sign request", err)
+		return "", err
 	}
-	//fmt.Println(urlStr)
-	return urlStr
-
+	req, _ := t.Svc.PutObjectRequest(&s3.PutObjectInput{
+		Body:   f,
+		Bucket: aws.String(myBucket),
+		Key:    aws.String(keyName),
+	})
+	urlStr, err := req.Presign(5 * time.Minute)
+	return urlStr, err
 }

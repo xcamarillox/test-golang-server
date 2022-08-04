@@ -18,9 +18,8 @@ type CarSpecs struct {
 	EngineCapacity   float32 `json:"engineCapacity"` //enlitros
 	Color            string  `json:"color"`
 	TransmissionType string  `json:"transmissionType"` // manual / automatica
-	IsBrandNew       bool    `json:"isBrandNew"`
-	PhotoPath        string  `json:"photoPath"`
 	PhotoURL         string  `json:"photoURL"`
+	Verified         bool    `json:"verified"`
 }
 
 var availableCars = []CarSpecs{
@@ -32,8 +31,8 @@ var availableCars = []CarSpecs{
 		EngineCapacity:   1.8,
 		Color:            "roja",
 		TransmissionType: "automatica",
-		IsBrandNew:       true,
-		PhotoPath:        "",
+		Verified:         false,
+		PhotoURL:         "",
 	},
 	{
 		Id:               1,
@@ -43,8 +42,8 @@ var availableCars = []CarSpecs{
 		EngineCapacity:   2.5,
 		Color:            "blanca",
 		TransmissionType: "automatica",
-		IsBrandNew:       true,
-		PhotoPath:        "",
+		Verified:         false,
+		PhotoURL:         "",
 	},
 }
 
@@ -118,7 +117,8 @@ func main() {
 			return c.SendStatus(responseCode)
 		}
 		newCar.Id = getNewIntId()
-		newCar.PhotoPath = ""
+		newCar.PhotoURL = ""
+		newCar.Verified = false
 		availableCars = append(availableCars, newCar)
 		c.SendString("El recurso fue añadido con exito.")
 		return c.SendStatus(201)
@@ -132,7 +132,7 @@ func main() {
 		return c.Status(fiber.StatusOK).JSON(availableCars[carIndex])
 	})
 
-	app.Put("/:id/set-photo", func(c *fiber.Ctx) error {
+	app.Put("/:id/set-photo/:mode", func(c *fiber.Ctx) error {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
 		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndexAndImage", carIndex)
 		if responseCode != 0 {
@@ -151,14 +151,25 @@ func main() {
 		}
 		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + extension
 		pathAndFile := fmt.Sprintf("/photos/%s", fileName)
-		availableCars[carIndex].PhotoPath = pathAndFile
-		c.SaveFile(file, "./public"+pathAndFile)
-		c.SendString("El recurso fue editado con exito.")
-		awsAuxLib.S3.UploadObject("./public"+pathAndFile, "levita-uploads-dev", fileName)
-		c.SendString("URL del recurso:")
-		photoURL := awsAuxLib.S3.GenerateUrl("levita-uploads-dev", fileName)
-		c.SendString(photoURL)
-		availableCars[carIndex].PhotoURL = photoURL
+		if c.Params("mode") == "client" || c.Params("mode") == "server" {
+			var photoURL string
+			c.SaveFile(file, "./public"+pathAndFile)
+			if c.Params("mode") == "server" {
+				awsAuxLib.S3.UploadObject("./public"+pathAndFile, "levita-uploads-dev", fileName)
+				photoURL, _ = awsAuxLib.S3.GetFileUrl("levita-uploads-dev", fileName)
+				availableCars[carIndex].Verified = true
+			} else {
+				photoURL, _ = awsAuxLib.S3.GetAPresignedURL("./public"+pathAndFile, "levita-uploads-dev", fileName)
+			}
+			os.Remove("./public" + pathAndFile)
+			c.SendString("El recurso fue editado con exito. Se generó la siguiente URL:")
+			c.SendString("URL del recurso:")
+			c.SendString(photoURL)
+			availableCars[carIndex].PhotoURL = photoURL
+		} else {
+			c.SendString("Method Not Allowed")
+			return c.SendStatus(405)
+		}
 		return c.SendStatus(202)
 	})
 
@@ -168,29 +179,24 @@ func main() {
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
-		carToEdit.PhotoPath = availableCars[carIndex].PhotoPath
+		carToEdit.PhotoURL = availableCars[carIndex].PhotoURL
 		availableCars[carIndex] = carToEdit
 		availableCars[carIndex].Id = idInt
 		c.SendString("El recurso fue editado con exito.")
 		return c.SendStatus(202)
 
 	})
-	app.Delete("/:id/remove-photo", func(c *fiber.Ctx) error {
+	app.Delete("/:id/:remove-photo", func(c *fiber.Ctx) error {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
 		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndex", carIndex)
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
-		err := os.Remove("./public" + availableCars[carIndex].PhotoPath)
-		if err != nil {
-			c.SendString("Error al eliminar archivo.")
-			return c.SendStatus(400)
-		}
-		splitStr := strings.Split(availableCars[carIndex].PhotoPath, ".")
+		os.Remove("./public" + availableCars[carIndex].PhotoURL)
+		splitStr := strings.Split(availableCars[carIndex].PhotoURL, ".")
 		extension := strings.ToLower(splitStr[len(splitStr)-1])
 		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + extension
-		//fmt.Println(fileName)
-		availableCars[carIndex].PhotoPath = ""
+		availableCars[carIndex].PhotoURL = ""
 		availableCars[carIndex].PhotoURL = ""
 		c.SendString("El recurso fue eliminado con exito.")
 		awsAuxLib.S3.DeleteObject(fileName, "levita-uploads-dev", fileName)
@@ -202,8 +208,14 @@ func main() {
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
-		if availableCars[carIndex].PhotoPath != "" {
-			os.Remove("./public" + availableCars[carIndex].PhotoPath)
+		if availableCars[carIndex].PhotoURL != "" {
+			os.Remove("./public" + availableCars[carIndex].PhotoURL)
+			if availableCars[carIndex].PhotoURL != "" {
+				splitStr := strings.Split(availableCars[carIndex].PhotoURL, ".")
+				extension := strings.ToLower(splitStr[len(splitStr)-1])
+				fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + extension
+				awsAuxLib.S3.DeleteObject(fileName, "levita-uploads-dev", fileName)
+			}
 		}
 		availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
 		c.SendString("El recurso fue eliminado con exito.")
