@@ -20,8 +20,15 @@ type CarSpecs struct {
 	TransmissionType string  `json:"transmissionType"` // manual / automatica
 	PhotoURL         string  `json:"photoURL"`
 	VerifiedURL      bool    `json:"verifiedURL"`
-	PhotoExtension   string  `json:"photoExtension"`
 }
+
+const (
+	CheckCarIndex                      = 1
+	CheckRequestData                   = 2
+	CheckCarIndexAndImage              = 3
+	CheckRequestDataAndCarIndex        = 4
+	CheckCarIndexAndPhotoFileNameField = 5
+)
 
 var availableCars = []CarSpecs{
 	{
@@ -34,7 +41,6 @@ var availableCars = []CarSpecs{
 		TransmissionType: "automatica",
 		VerifiedURL:      false,
 		PhotoURL:         "",
-		PhotoExtension:   "",
 	},
 	{
 		Id:               1,
@@ -46,7 +52,6 @@ var availableCars = []CarSpecs{
 		TransmissionType: "automatica",
 		VerifiedURL:      false,
 		PhotoURL:         "",
-		PhotoExtension:   "",
 	},
 }
 
@@ -77,9 +82,30 @@ func getNewIntId() int {
 	}
 	return len(availableCars)
 }
-func getMeAReponseAndOrANewCar(c *fiber.Ctx, mode string, carIndex int) (int, CarSpecs) {
+
+func getPhotoFileExtension(filename string) (ext string, errorString string) {
+	splitFileName := strings.Split(filename, ".")
+	extension := strings.ToLower(splitFileName[len(splitFileName)-1])
+	if extension != "jpg" && extension != "jpeg" && extension != "png" && extension != "gif" || len(splitFileName) < 2 {
+		if len(splitFileName) < 2 {
+			return "", "Error con el nombre de archivo. El archivo debe tener nombre y extensión."
+		} else {
+			return "", "Error en el tipo de archivo. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente."
+		}
+	}
+	return extension, ""
+}
+
+func getFileExtensionFromURL(url string) string {
+	splitPath := strings.Split(url, "/")
+	splitPathFileName := strings.Split(splitPath[len(splitPath)-1], ".")
+	extension := splitPathFileName[len(splitPathFileName)-1]
+	return extension
+}
+
+func getMeAReponseAndOrANewCar(c *fiber.Ctx, mode int, carIndex int) (int, CarSpecs) {
 	newCar := CarSpecs{}
-	if mode == "checkRequestData" || mode == "checkRequestDataAndCarIndex" {
+	if mode == CheckRequestData || mode == CheckRequestDataAndCarIndex {
 		if err := c.BodyParser(&newCar); err != nil {
 			c.SendString("La estructura de los datos recibidos es incorrecta.")
 			return 400, newCar // Error code 400
@@ -89,16 +115,32 @@ func getMeAReponseAndOrANewCar(c *fiber.Ctx, mode string, carIndex int) (int, Ca
 			return 400, newCar
 		}
 	}
-
-	if mode == "checkCarIndex" || mode == "checkRequestDataAndCarIndex" || mode == "checkCarIndexAndImage" {
+	if mode == CheckCarIndex || mode == CheckRequestDataAndCarIndex || mode == CheckCarIndexAndImage || mode == CheckCarIndexAndPhotoFileNameField {
+		var errorString string
 		if carIndex < 0 {
 			c.SendString("El ID enviado en la ruta es incorrecto o no fue encontrado.")
 			return 404, newCar // Error code 404
 		}
-		if mode == "checkCarIndexAndImage" {
-			if _, err := c.FormFile("photo"); err != nil {
-				c.SendString("Debes enviar una archivo de imagen válido. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente.")
+		if mode == CheckCarIndexAndImage {
+			file, err := c.FormFile("photoFile")
+			if err != nil {
+				c.SendString("Debes anexar un archivo de imagen válido. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente.")
 				return 404, newCar
+			}
+			_, errorString = getPhotoFileExtension(file.Filename)
+		}
+		if mode == CheckCarIndexAndPhotoFileNameField {
+			field := c.FormValue("photoFileName")
+			if field == "" {
+				c.SendString("Debes anexar el campo photoFileName además del nombre y extensión de tu imágen. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente.")
+				return 400, newCar
+			}
+			_, errorString = getPhotoFileExtension(field)
+		}
+		if mode == CheckCarIndexAndImage || mode == CheckCarIndexAndPhotoFileNameField {
+			if errorString != "" {
+				c.SendString(errorString)
+				return 400, newCar
 			}
 		}
 	}
@@ -115,13 +157,12 @@ func main() {
 		return c.Status(fiber.StatusOK).JSON(availableCars)
 	})
 	app.Post("/", func(c *fiber.Ctx) error {
-		responseCode, newCar := getMeAReponseAndOrANewCar(c, "checkRequestData", 0)
+		responseCode, newCar := getMeAReponseAndOrANewCar(c, CheckRequestData, 0)
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
 		newCar.Id = getNewIntId()
 		newCar.PhotoURL = ""
-		newCar.PhotoExtension = ""
 		newCar.VerifiedURL = false
 		availableCars = append(availableCars, newCar)
 		c.SendString("El recurso fue añadido con exito.")
@@ -129,7 +170,7 @@ func main() {
 	})
 	app.Get("/:id", func(c *fiber.Ctx) error {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
-		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndex", carIndex)
+		responseCode, _ := getMeAReponseAndOrANewCar(c, CheckCarIndex, carIndex)
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
@@ -137,7 +178,7 @@ func main() {
 	})
 	app.Put("/:id/client-upload", func(c *fiber.Ctx) error {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
-		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndex", carIndex)
+		responseCode, _ := getMeAReponseAndOrANewCar(c, CheckCarIndex, carIndex)
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
@@ -148,40 +189,36 @@ func main() {
 	})
 	app.Put("/:id/set-photo/:mode", func(c *fiber.Ctx) error {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
-		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndexAndImage", carIndex)
-		if responseCode != 0 {
-			return c.SendStatus(responseCode)
-		}
-		file, _ := c.FormFile("photo")
-		splitStr := strings.Split(file.Filename, ".")
-		extension := strings.ToLower(splitStr[len(splitStr)-1])
-		if extension != "jpg" && extension != "jpeg" && extension != "png" && extension != "gif" || len(splitStr) < 2 {
-			if len(splitStr) < 2 {
-				c.SendString("Error con el nombre de archivo. El archivo debe tener nombre y extensión.")
-			} else {
-				c.SendString("Error en el tipo de archivo. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente.")
-			}
-			return c.SendStatus(404)
-		}
-		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + extension
-		pathAndFile := fmt.Sprintf("/photos/%s", fileName)
 		if c.Params("mode") == "client-upload" || c.Params("mode") == "server-upload" {
 			var photoURL string
-			c.SaveFile(file, "./public"+pathAndFile)
+			var photoFileExtension string
 			if c.Params("mode") == "server-upload" {
+				responseCode, _ := getMeAReponseAndOrANewCar(c, CheckCarIndexAndImage, carIndex)
+				if responseCode != 0 {
+					return c.SendStatus(responseCode)
+				}
+				photoFile, _ := c.FormFile("photoFile")
+				photoFileExtension, _ = getPhotoFileExtension(photoFile.Filename)
+				fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + photoFileExtension
+				pathAndFile := fmt.Sprintf("/photos/%s", fileName)
+				c.SaveFile(photoFile, "./public"+pathAndFile)
 				awsAuxLib.S3.UploadObject("./public"+pathAndFile, "levita-uploads-dev", fileName)
 				photoURL, _ = awsAuxLib.S3.GetFileUrl("levita-uploads-dev", fileName)
 				availableCars[carIndex].VerifiedURL = true
+				os.Remove("./public" + pathAndFile)
 			} else {
-				photoURL, _ = awsAuxLib.S3.GetAPresignedURL("./public"+pathAndFile, "levita-uploads-dev", fileName)
+				responseCode, _ := getMeAReponseAndOrANewCar(c, CheckCarIndexAndPhotoFileNameField, carIndex)
+				if responseCode != 0 {
+					return c.SendStatus(responseCode)
+				}
+				photoFileNameFormValue := c.FormValue("photoFileName")
+				photoFileExtension, _ = getPhotoFileExtension(photoFileNameFormValue)
+				fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + photoFileExtension
+				photoURL, _ = awsAuxLib.S3.GetAPresignedURL("levita-uploads-dev", fileName)
 				availableCars[carIndex].VerifiedURL = false
 			}
-			os.Remove("./public" + pathAndFile)
-			c.SendString("El recurso fue editado con exito. Se generó la siguiente URL:")
-			c.SendString("URL del recurso:")
-			c.SendString(photoURL)
-			availableCars[carIndex].PhotoExtension = extension
-			availableCars[carIndex].PhotoURL = photoURL
+			c.SendString("El recurso fue editado con exito. Se generó la siguiente URL:\n" + photoURL)
+			availableCars[carIndex].PhotoURL = strings.Split(photoURL, "?")[0]
 		} else {
 			c.SendString("Method Not Allowed")
 			return c.SendStatus(405)
@@ -191,47 +228,41 @@ func main() {
 
 	app.Put("/:id", func(c *fiber.Ctx) error {
 		carIndex, idInt := getIndexOfStringId(c.Params("id"))
-		responseCode, carToEdit := getMeAReponseAndOrANewCar(c, "checkRequestDataAndCarIndex", carIndex)
+		responseCode, carToEdit := getMeAReponseAndOrANewCar(c, CheckRequestDataAndCarIndex, carIndex)
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
 		carToEdit.PhotoURL = availableCars[carIndex].PhotoURL
 		carToEdit.VerifiedURL = availableCars[carIndex].VerifiedURL
-		carToEdit.PhotoExtension = availableCars[carIndex].PhotoExtension
 		availableCars[carIndex] = carToEdit
 		availableCars[carIndex].Id = idInt
 		c.SendString("El recurso fue editado con exito.")
 		return c.SendStatus(202)
 
 	})
-	app.Delete("/:id/:remove-photo", func(c *fiber.Ctx) error {
+
+	var deleteHandler = func(c *fiber.Ctx) error {
 		carIndex, _ := getIndexOfStringId(c.Params("id"))
-		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndex", carIndex)
-		if responseCode != 0 {
-			return c.SendStatus(responseCode)
-		}
-		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + availableCars[carIndex].PhotoExtension
-		availableCars[carIndex].PhotoURL = ""
-		availableCars[carIndex].VerifiedURL = false
-		availableCars[carIndex].PhotoExtension = ""
-		awsAuxLib.S3.DeleteObject(fileName, "levita-uploads-dev", fileName)
-		c.SendString("El recurso fue eliminado con exito.")
-		return c.SendStatus(200)
-	})
-	app.Delete("/:id", func(c *fiber.Ctx) error {
-		carIndex, _ := getIndexOfStringId(c.Params("id"))
-		responseCode, _ := getMeAReponseAndOrANewCar(c, "checkCarIndex", carIndex)
+		responseCode, _ := getMeAReponseAndOrANewCar(c, CheckCarIndex, carIndex)
 		if responseCode != 0 {
 			return c.SendStatus(responseCode)
 		}
 		if availableCars[carIndex].PhotoURL != "" {
-			fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + availableCars[carIndex].PhotoExtension
-			awsAuxLib.S3.DeleteObject(fileName, "levita-uploads-dev", fileName)
+			fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + getFileExtensionFromURL(availableCars[carIndex].PhotoURL)
+			awsAuxLib.S3.DeleteObject("levita-uploads-dev", fileName)
 		}
-		availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
+		availableCars[carIndex].PhotoURL = ""
+		availableCars[carIndex].VerifiedURL = false
+		route := c.Route()
+		if route.Path == "/:id" {
+			availableCars = append(availableCars[:carIndex], availableCars[carIndex+1:]...)
+		}
 		c.SendString("El recurso fue eliminado con exito.")
 		return c.SendStatus(202)
-	})
+	}
+
+	app.Delete("/:id/remove-photo", deleteHandler)
+	app.Delete("/:id", deleteHandler)
 
 	//app.Static("/photos", "./public/photos")
 	app.Listen(":3000")

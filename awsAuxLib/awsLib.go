@@ -42,9 +42,9 @@ func (t *S3Client) NewSession(region string) error {
 }
 
 /*
-	Lista todo lo que se pueda ver en s3 con la cuenta de AWS
+	Lista todos los buckets de AWS S3
 */
-func (t *S3Client) Ls() error {
+func (t *S3Client) ListBuckets() error {
 	result, err := t.Svc.ListBuckets(nil)
 	if err != nil {
 		exitErrorf("Unable to list buckets, %v", err)
@@ -80,8 +80,8 @@ func (t *S3Client) Upload(filename string, myBucket string, keyName string) (*s3
 	return resp, err
 }
 
-func (t *S3Client) UploadObject(filename string, myBucket string, keyName string) (*s3.PutObjectOutput, error) {
-	f, err := os.Open(filename)
+func (t *S3Client) UploadObject(filenameAndPath string, myBucket string, keyName string) (*s3.PutObjectOutput, error) {
+	f, err := os.Open(filenameAndPath)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +89,7 @@ func (t *S3Client) UploadObject(filename string, myBucket string, keyName string
 		Body:   f,
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
+		ACL:    aws.String(s3.ObjectCannedACLPublicRead),
 	})
 	return resp, err
 }
@@ -96,12 +97,11 @@ func (t *S3Client) UploadObject(filename string, myBucket string, keyName string
 /* DeleteObject:
 Borra un archivo del bucket de s3
 
-- filename string archivo local que deseas subir
 - myBucket string nombre del bucket en tu cuenta de s3
 - keyName string nombre del objeto final con la ruta completa
 */
 
-func (t *S3Client) DeleteObject(filename string, myBucket string, keyName string) (*s3.DeleteObjectOutput, error) {
+func (t *S3Client) DeleteObject(myBucket string, keyName string) (*s3.DeleteObjectOutput, error) {
 	resp, err := t.Svc.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
@@ -129,20 +129,15 @@ func (t *S3Client) GetFileUrl(myBucket string, keyName string) (string, error) {
 /* GetPresignedURL:
 Obtiene un presignedURL
 
-- filename string archivo local que deseas subir
 - myBucket string nombre del bucket en tu cuenta de s3
 - keyName string nombre del objeto final con la ruta completa pero sin el nombre del bucket
 */
 
-func (t *S3Client) GetAPresignedURL(filename string, myBucket string, keyName string) (string, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return "", err
-	}
+func (t *S3Client) GetAPresignedURL(myBucket string, keyName string) (string, error) {
 	req, _ := t.Svc.PutObjectRequest(&s3.PutObjectInput{
-		Body:   f,
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
+		ACL:    aws.String(s3.ObjectCannedACLPublicRead),
 	})
 	urlStr, err := req.Presign(5 * time.Minute)
 	return urlStr, err
