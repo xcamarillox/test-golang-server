@@ -59,11 +59,13 @@ func (t *S3Client) ListBuckets() error {
 }
 
 /* Upload ó UploadObject:
-Sube un archivo a s3
+Sube un archivo a s3 (las dos funciones son alternativas)
 
 - filename string archivo local que deseas subir
 - myBucket string nombre del bucket en tu cuenta de s3
 - keyName string nombre del objeto final con la ruta completa pero sin el nombre del bucket
+ Nota: La hacer un request sobre archivos con el ACL "ObjectCannedACLPublicRead" se debe agregar
+ en la cabezera de la solicitud header = x-amz-acl, value = public-read
 */
 
 func (t *S3Client) Upload(filename string, myBucket string, keyName string) (*s3manager.UploadOutput, error) {
@@ -76,6 +78,7 @@ func (t *S3Client) Upload(filename string, myBucket string, keyName string) (*s3
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
 		Body:   f,
+		ACL:    aws.String(s3.ObjectCannedACLPublicRead),
 	})
 	return resp, err
 }
@@ -117,7 +120,7 @@ y que tenga el nombre que se ponga en (keyName)
 - keyName string nombre del objeto a subur con la ruta completa
 */
 
-func (t *S3Client) GetFileUrl(myBucket string, keyName string) (string, error) {
+func (t *S3Client) GetTemporalUrl(myBucket string, keyName string) (string, error) {
 	req, _ := t.Svc.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(myBucket),
 		Key:    aws.String(keyName),
@@ -131,6 +134,8 @@ Obtiene un presignedURL
 
 - myBucket string nombre del bucket en tu cuenta de s3
 - keyName string nombre del objeto final con la ruta completa pero sin el nombre del bucket
+Nota: La hacer un request sobre archivos con el ACL "ObjectCannedACLPublicRead" se debe agregar
+ en la cabezera de la solicitud header = x-amz-acl, value = public-read
 */
 
 func (t *S3Client) GetAPresignedURL(myBucket string, keyName string) (string, error) {
