@@ -57,6 +57,19 @@ func main() {
 		c.SendString("El recurso fue añadido con exito.")
 		return c.SendStatus(201)
 	})
+	app.Get("/export", func(c *fiber.Ctx) error {
+		f := appAuxLib.GetANewExcelizeFileOfCarSpecsSlice(availableCars)
+		if err := f.SaveAs("./public/temp/BookTemp1.xlsx"); err != nil {
+			fmt.Println(err)
+		}
+		c.SendFile("./public/temp/BookTemp1.xlsx")
+		os.Remove("./public/temp/BookTemp1.xlsx")
+		return c.SendStatus(202)
+	})
+
+	app.Get("/import", func(c *fiber.Ctx) error {
+		return c.SendStatus(202)
+	})
 	app.Get("/:id", func(c *fiber.Ctx) error {
 		carIndex, _ := appAuxLib.GetIndexOfStringId(c.Params("id"), availableCars)
 		responseCode, _ := appAuxLib.GetMeAReponseAndOrANewCar(c, appAuxLib.CheckCarIndex, carIndex)

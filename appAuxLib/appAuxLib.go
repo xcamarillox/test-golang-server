@@ -1,10 +1,14 @@
 package appAuxLib
 
 import (
+	"fmt"
+	"math"
+	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/xuri/excelize/v2"
 )
 
 const (
@@ -117,4 +121,92 @@ func GetMeAReponseAndOrANewCar(c *fiber.Ctx, mode int, carIndex int) (int, CarSp
 		}
 	}
 	return 0, newCar //incoming data is ok and setted in car, 0 returned as no error code
+}
+
+// indexToColumn takes in an index value & converts it to A1 Notation
+// Index 1 is Column A
+// E.g. 3 == C, 29 == AC, 731 == ABC
+func IndexToColumn(index int) (string, error) {
+
+	// Validate index size
+	maxIndex := 18278
+	if index > maxIndex {
+		return "", fmt.Errorf("index cannot be greater than %v (column ZZZ)", maxIndex)
+	}
+
+	// Get column from index
+	l := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	if index > 26 {
+		letterA, _ := IndexToColumn(int(math.Floor(float64(index-1) / 26)))
+		letterB, _ := IndexToColumn(index % 26)
+		return letterA + letterB, nil
+	} else {
+		if index == 0 {
+			index = 26
+		}
+		return string(l[index-1]), nil
+	}
+
+}
+
+// columnToIndex takes in A1 Notation & converts it to an index value
+// Column A is index 1
+// E.g. C == 3, AC == 29, ABC == 731
+func ColumnToIndex(column string) (int, error) {
+	// Calculate index from column string
+	var index int
+	var a uint8 = "A"[0]
+	var z uint8 = "Z"[0]
+	var alphabet = z - a + 1
+	i := 1
+	for n := len(column) - 1; n >= 0; n-- {
+		r := column[n]
+		if r < a || r > z {
+			return 0, fmt.Errorf("invalid character in column, expected A-Z but got [%c]", r)
+		}
+		runePos := int(r-a) + 1
+		index += runePos * int(math.Pow(float64(alphabet), float64(i-1)))
+		i++
+	}
+	// Return column index & success
+	return index, nil
+}
+func GetCarSpecsFieldsNames() []string {
+	t := reflect.TypeOf(CarSpecs{})
+	names := make([]string, t.NumField())
+	for i := range names {
+		names[i] = t.Field(i).Name
+	}
+	return names
+}
+
+func GetField(obj interface{}, fieldName string) reflect.Value {
+	pointToStruct := reflect.ValueOf(obj) // addressable
+	curStruct := pointToStruct.Elem()
+	if curStruct.Kind() != reflect.Struct {
+		fmt.Println("not struct")
+	}
+	curField := curStruct.FieldByName(fieldName) // type: reflect.Value
+	if !curField.IsValid() {
+		fmt.Println("not found:" + fieldName)
+	}
+	return curField
+}
+
+func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File {
+	structNames := GetCarSpecsFieldsNames()
+	f := excelize.NewFile()
+	for j := range structNames {
+		columnPosition, _ := IndexToColumn(j + 1)
+		cellPosition := columnPosition + strconv.Itoa(1)
+		f.SetCellValue("Sheet1", cellPosition, structNames[j])
+	}
+	for i := range availableCars {
+		for j := range structNames {
+			columnPosition, _ := IndexToColumn(j + 1)
+			cellPosition := columnPosition + strconv.Itoa(2+i)
+			f.SetCellValue("Sheet1", cellPosition, GetField(&availableCars[i], structNames[j]))
+		}
+	}
+	return f
 }
