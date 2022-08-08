@@ -67,7 +67,20 @@ func main() {
 		return c.SendStatus(202)
 	})
 
-	app.Get("/import", func(c *fiber.Ctx) error {
+	app.Post("/import", func(c *fiber.Ctx) error {
+		responseCode, _ := appAuxLib.GetMeAReponseAndOrANewCar(c, appAuxLib.CheckExcelFile, 0)
+		if responseCode != 0 {
+			return c.SendStatus(responseCode)
+		}
+		file, _ := c.FormFile("excelFile")
+		fileAndPath := "./public/temp/" + file.Filename
+		c.SaveFile(file, fileAndPath)
+		var err error
+		availableCars, err = appAuxLib.ImportDartaFromExcelFile(fileAndPath, availableCars)
+		if err != nil {
+			return c.SendStatus(400)
+		}
+		os.Remove("./public/temp/" + file.Filename)
 		return c.SendStatus(202)
 	})
 	app.Get("/:id", func(c *fiber.Ctx) error {

@@ -1,6 +1,7 @@
 package appAuxLib
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -17,6 +18,7 @@ const (
 	CheckCarIndexAndImage              = 3
 	CheckRequestDataAndCarIndex        = 4
 	CheckCarIndexAndPhotoFileNameField = 5
+	CheckExcelFile                     = 6
 )
 
 type CarSpecs struct {
@@ -40,7 +42,7 @@ func GetIndexOfIntId(id int, availableCars []CarSpecs) int {
 	return -1
 }
 
-func GetIndexOfStringId(id string, availableCars []CarSpecs) (int, int) {
+func GetIndexOfStringId(id string, availableCars []CarSpecs) (int, int) { // returns carIndex, idInt
 	var carIndex int
 	idInt, err := strconv.Atoi(id)
 	if err == nil {
@@ -100,7 +102,7 @@ func GetMeAReponseAndOrANewCar(c *fiber.Ctx, mode int, carIndex int) (int, CarSp
 		if mode == CheckCarIndexAndImage {
 			file, err := c.FormFile("photoFile")
 			if err != nil {
-				c.SendString("Debes anexar un archivo de imagen válido. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente.")
+				c.SendString("Debes anexar el campo photoFile además de un archivo de imagen válido. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente.")
 				return 404, newCar
 			}
 			_, errorString = GetPhotoFileExtension(file.Filename)
@@ -117,6 +119,22 @@ func GetMeAReponseAndOrANewCar(c *fiber.Ctx, mode int, carIndex int) (int, CarSp
 			if errorString != "" {
 				c.SendString(errorString)
 				return 400, newCar
+			}
+		}
+	}
+	if mode == CheckExcelFile {
+		file, err := c.FormFile("excelFile")
+		if err != nil {
+			c.SendString("Debes anexar el campo excelFile además de un archivo de Excel con extensión xlsx.")
+			return 404, newCar
+		}
+		splitFileName := strings.Split(file.Filename, ".")
+		extension := strings.ToLower(splitFileName[len(splitFileName)-1])
+		if extension != "xlsx" || len(splitFileName) < 2 {
+			if len(splitFileName) < 2 {
+				c.SendString("Error con el nombre de archivo. El archivo debe tener nombre y extensión.")
+			} else {
+				c.SendString("Error en el tipo de archivo. Solo es aceptada la extensión xlsx.")
 			}
 		}
 	}
@@ -171,6 +189,7 @@ func ColumnToIndex(column string) (int, error) {
 	// Return column index & success
 	return index, nil
 }
+
 func GetCarSpecsFieldsNames() []string {
 	t := reflect.TypeOf(CarSpecs{})
 	names := make([]string, t.NumField())
@@ -180,7 +199,51 @@ func GetCarSpecsFieldsNames() []string {
 	return names
 }
 
-func GetField(obj interface{}, fieldName string) reflect.Value {
+func GetOrSetReflectedFieldValue(structValue reflect.Value, isSetMode bool, stringValue string) (interface{}, error) {
+	//fmt.Println(structValue.Kind().String())
+	switch t := structValue.Kind().String(); t {
+	case "int":
+		if isSetMode {
+			value, _ := strconv.ParseInt(stringValue, 0, 0)
+			structValue.SetInt(value)
+			return nil, nil
+		} else {
+			integerValue, _ := structValue.Interface().(int)
+			return integerValue, nil
+		}
+	case "float32":
+		if isSetMode {
+			value, _ := strconv.ParseFloat(stringValue, 32)
+			structValue.SetFloat(value)
+			return nil, nil
+		} else {
+			floatValue, _ := structValue.Interface().(float32)
+			return floatValue, nil
+		}
+	case "string":
+		if isSetMode {
+			structValue.SetString(stringValue)
+			return nil, nil
+		} else {
+			stringValue, _ := structValue.Interface().(string)
+			return stringValue, nil
+		}
+	case "bool":
+		if isSetMode {
+			value, _ := strconv.ParseBool(stringValue)
+			structValue.SetBool(value)
+			return nil, nil
+		} else {
+			boolValue, _ := structValue.Interface().(bool)
+			return boolValue, nil
+		}
+	default:
+		fmt.Println("Type is unknown!")
+		return "", errors.New("El tipo de dato es desconocido.")
+	}
+}
+
+func GetReflectField(obj interface{}, fieldName string) reflect.Value {
 	pointToStruct := reflect.ValueOf(obj) // addressable
 	curStruct := pointToStruct.Elem()
 	if curStruct.Kind() != reflect.Struct {
@@ -194,19 +257,87 @@ func GetField(obj interface{}, fieldName string) reflect.Value {
 }
 
 func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File {
-	structNames := GetCarSpecsFieldsNames()
+	fieldsNames := GetCarSpecsFieldsNames()
 	f := excelize.NewFile()
-	for j := range structNames {
+	for j := range fieldsNames {
 		columnPosition, _ := IndexToColumn(j + 1)
 		cellPosition := columnPosition + strconv.Itoa(1)
-		f.SetCellValue("Sheet1", cellPosition, structNames[j])
+		f.SetCellValue("Sheet1", cellPosition, fieldsNames[j])
 	}
 	for i := range availableCars {
-		for j := range structNames {
+		for j := range fieldsNames {
 			columnPosition, _ := IndexToColumn(j + 1)
 			cellPosition := columnPosition + strconv.Itoa(2+i)
-			f.SetCellValue("Sheet1", cellPosition, GetField(&availableCars[i], structNames[j]))
+			cellValue, _ := GetOrSetReflectedFieldValue(GetReflectField(&availableCars[i], fieldsNames[j]), false, "")
+			f.SetCellValue("Sheet1", cellPosition, cellValue)
 		}
 	}
 	return f
+}
+
+func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSpecs, error) {
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		return []CarSpecs{}, err
+	}
+	//Acá se revisa si la primer file corresponde a los campos(fields) del struct de datos
+	fieldsNames := GetCarSpecsFieldsNames()
+	for j := range fieldsNames {
+		columnPosition, _ := IndexToColumn(j + 1)
+		cellPosition := columnPosition + strconv.Itoa(1)
+		cellValue, err := f.GetCellValue("Sheet1", cellPosition)
+		if err != nil {
+			return []CarSpecs{}, err
+		}
+		if cellValue != fieldsNames[j] {
+			return []CarSpecs{}, errors.New("la estructura del excel es incorrecta")
+		}
+	}
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		fmt.Println(err)
+		return []CarSpecs{}, err
+	}
+	/*
+		Acá se revisa si el valor de la primer celda de la fila corresponde a un ID,
+		si es así los datos de la fila se reflejan en los registros. En caso contario
+		Se crea un nuevo ID con los datos segun correspondan.
+	*/
+	fmt.Println("Rows:", rows)
+	for i, row := range rows {
+		idxId, _ := GetIndexOfStringId(row[0], availableCars)
+		newCar := CarSpecs{}
+		if idxId == -1 {
+			newCar.Id = GetNewIntId(availableCars)
+			newCar.PhotoURL = ""
+			newCar.VerifiedURL = false
+		}
+		for j := range fieldsNames {
+			if j == 0 || j == 7 || j == 8 { //ID, PhotoURL, VerifiedURL
+				continue
+			}
+			columnPosition, _ := IndexToColumn(j + 1)
+			cellPosition := columnPosition + strconv.Itoa(i+1)
+			cellValue, err := f.GetCellValue("Sheet1", cellPosition)
+			if err != nil {
+				fmt.Println(err)
+			}
+			//fmt.Println(cellPosition, cellValue)
+			if idxId == -1 { // If ID of row its found
+				//fmt.Println(newCar, fieldsNames[j])
+				GetOrSetReflectedFieldValue(GetReflectField(&newCar, fieldsNames[j]), true, cellValue)
+			} else {
+				//fmt.Println(availableCars[idxId], fieldsNames[j])
+				GetOrSetReflectedFieldValue(GetReflectField(&availableCars[idxId], fieldsNames[j]), true, cellValue)
+			}
+		}
+		if idxId == -1 {
+			newCar.Id = GetNewIntId(availableCars)
+			newCar.PhotoURL = ""
+			newCar.VerifiedURL = false
+			availableCars = append(availableCars, newCar)
+		}
+	}
+	fmt.Println(availableCars)
+	return availableCars, nil
 }
