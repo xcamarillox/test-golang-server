@@ -78,9 +78,11 @@ func main() {
 		var err error
 		availableCars, err = appAuxLib.ImportDartaFromExcelFile(fileAndPath, availableCars)
 		if err != nil {
+			c.SendString("Error al importar los datos.")
 			return c.SendStatus(400)
 		}
 		os.Remove("./public/temp/" + file.Filename)
+		c.SendString("Los datos en el fichero de Excel han sido importados exitosamente.")
 		return c.SendStatus(202)
 	})
 	app.Get("/:id", func(c *fiber.Ctx) error {

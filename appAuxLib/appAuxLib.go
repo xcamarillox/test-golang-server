@@ -303,7 +303,8 @@ func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarS
 		si es así los datos de la fila se reflejan en los registros. En caso contario
 		Se crea un nuevo ID con los datos segun correspondan.
 	*/
-	fmt.Println("Rows:", rows)
+	rows = append(rows[1:])
+	//fmt.Println("Rows:", rows)
 	for i, row := range rows {
 		idxId, _ := GetIndexOfStringId(row[0], availableCars)
 		newCar := CarSpecs{}
@@ -317,7 +318,7 @@ func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarS
 				continue
 			}
 			columnPosition, _ := IndexToColumn(j + 1)
-			cellPosition := columnPosition + strconv.Itoa(i+1)
+			cellPosition := columnPosition + strconv.Itoa(i+2)
 			cellValue, err := f.GetCellValue("Sheet1", cellPosition)
 			if err != nil {
 				fmt.Println(err)
@@ -335,9 +336,11 @@ func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarS
 			newCar.Id = GetNewIntId(availableCars)
 			newCar.PhotoURL = ""
 			newCar.VerifiedURL = false
-			availableCars = append(availableCars, newCar)
+			if newCar.Year > 0 {
+				availableCars = append(availableCars, newCar)
+			}
 		}
 	}
-	fmt.Println(availableCars)
+	//fmt.Println(availableCars)
 	return availableCars, nil
 }
