@@ -309,11 +309,11 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 	//fmt.Println("Rows:", rows)
 ROWS:
 	for i, row := range rows {
-		idxId, intId := GetIndexOfStringId(row[0], availableCars)
+		if len(row) == 0 {
+			continue
+		}
+		idxId, _ := GetIndexOfStringId(row[0], availableCars)
 		newCar := CarSpecs{}
-		newCar.Id = GetNewIntId(availableCars)
-		newCar.PhotoURL = ""
-		newCar.VerifiedURL = false
 		for j := range fieldsNames {
 			if j == 0 || j == 7 || j == 8 { //ID, PhotoURL, VerifiedURL
 				continue
@@ -326,26 +326,26 @@ ROWS:
 			}
 			//fmt.Println(cellPosition, cellValue)
 			//fmt.Println(newCar, fieldsNames[j])
+			//fmt.Println(newCar)
 			_, convErr := GetOrSetReflectedFieldValue(GetReflectField(&newCar, fieldsNames[j]), true, cellValue)
-			if convErr != nil {
+			if convErr != nil || newCar.Year < 0 {
+				convErr = errors.New("Nuevo error")
 				rowErr = append(rowErr, strconv.Itoa(i+2))
 				fmt.Println("Error en la fila: " + strconv.Itoa(i+2) + ". Celda: " + cellPosition)
 				fmt.Println("Error en tipo de dato con: " + cellValue)
 				continue ROWS
 			}
 		}
-		if idxId > 0 {
-			newCar.Id = intId
-			newCar.PhotoURL = availableCars[idxId].PhotoURL
-			newCar.VerifiedURL = availableCars[idxId].VerifiedURL
-			availableCars[idxId] = newCar
-		} else {
+		if idxId < 0 {
 			newCar.Id = GetNewIntId(availableCars)
 			newCar.PhotoURL = ""
 			newCar.VerifiedURL = false
-			if newCar.Year > -1 {
-				availableCars = append(availableCars, newCar)
-			}
+			availableCars = append(availableCars, newCar)
+		} else {
+			newCar.Id = availableCars[idxId].Id
+			newCar.PhotoURL = availableCars[idxId].PhotoURL
+			newCar.VerifiedURL = availableCars[idxId].VerifiedURL
+			availableCars[idxId] = newCar
 		}
 	}
 	//fmt.Println(availableCars)
