@@ -136,6 +136,7 @@ func GetMeAReponseAndOrANewCar(c *fiber.Ctx, mode int, carIndex int) (int, CarSp
 			} else {
 				c.SendString("Error en el tipo de archivo. Solo es aceptada la extensión xlsx.")
 			}
+			return 400, newCar
 		}
 	}
 	return 0, newCar //incoming data is ok and setted in car, 0 returned as no error code
@@ -204,18 +205,18 @@ func GetOrSetReflectedFieldValue(structValue reflect.Value, isSetMode bool, stri
 	switch t := structValue.Kind().String(); t {
 	case "int":
 		if isSetMode {
-			value, _ := strconv.ParseInt(stringValue, 0, 0)
+			value, err := strconv.ParseInt(stringValue, 0, 0)
 			structValue.SetInt(value)
-			return nil, nil
+			return nil, err
 		} else {
 			integerValue, _ := structValue.Interface().(int)
 			return integerValue, nil
 		}
 	case "float32":
 		if isSetMode {
-			value, _ := strconv.ParseFloat(stringValue, 32)
+			value, err := strconv.ParseFloat(stringValue, 32)
 			structValue.SetFloat(value)
-			return nil, nil
+			return nil, err
 		} else {
 			floatValue, _ := structValue.Interface().(float32)
 			return floatValue, nil
@@ -230,9 +231,9 @@ func GetOrSetReflectedFieldValue(structValue reflect.Value, isSetMode bool, stri
 		}
 	case "bool":
 		if isSetMode {
-			value, _ := strconv.ParseBool(stringValue)
+			value, err := strconv.ParseBool(stringValue)
 			structValue.SetBool(value)
-			return nil, nil
+			return nil, err
 		} else {
 			boolValue, _ := structValue.Interface().(bool)
 			return boolValue, nil
@@ -275,10 +276,11 @@ func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File
 	return f
 }
 
-func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSpecs, error) {
+func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSpecs, []string, error) {
+	var rowErr []string
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
-		return []CarSpecs{}, err
+		return []CarSpecs{}, rowErr, err
 	}
 	//Acá se revisa si la primer file corresponde a los campos(fields) del struct de datos
 	fieldsNames := GetCarSpecsFieldsNames()
@@ -287,16 +289,16 @@ func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarS
 		cellPosition := columnPosition + strconv.Itoa(1)
 		cellValue, err := f.GetCellValue("Sheet1", cellPosition)
 		if err != nil {
-			return []CarSpecs{}, err
+			return []CarSpecs{}, rowErr, err
 		}
 		if cellValue != fieldsNames[j] {
-			return []CarSpecs{}, errors.New("la estructura del excel es incorrecta")
+			return []CarSpecs{}, rowErr, errors.New("la estructura del excel es incorrecta")
 		}
 	}
 	rows, err := f.GetRows("Sheet1")
 	if err != nil {
 		fmt.Println(err)
-		return []CarSpecs{}, err
+		return []CarSpecs{}, rowErr, err
 	}
 	/*
 		Acá se revisa si el valor de la primer celda de la fila corresponde a un ID,
@@ -305,14 +307,13 @@ func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarS
 	*/
 	rows = append(rows[1:])
 	//fmt.Println("Rows:", rows)
+ROWS:
 	for i, row := range rows {
-		idxId, _ := GetIndexOfStringId(row[0], availableCars)
+		idxId, intId := GetIndexOfStringId(row[0], availableCars)
 		newCar := CarSpecs{}
-		if idxId == -1 {
-			newCar.Id = GetNewIntId(availableCars)
-			newCar.PhotoURL = ""
-			newCar.VerifiedURL = false
-		}
+		newCar.Id = GetNewIntId(availableCars)
+		newCar.PhotoURL = ""
+		newCar.VerifiedURL = false
 		for j := range fieldsNames {
 			if j == 0 || j == 7 || j == 8 { //ID, PhotoURL, VerifiedURL
 				continue
@@ -324,23 +325,29 @@ func ImportDartaFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarS
 				fmt.Println(err)
 			}
 			//fmt.Println(cellPosition, cellValue)
-			if idxId == -1 { // If ID of row its found
-				//fmt.Println(newCar, fieldsNames[j])
-				GetOrSetReflectedFieldValue(GetReflectField(&newCar, fieldsNames[j]), true, cellValue)
-			} else {
-				//fmt.Println(availableCars[idxId], fieldsNames[j])
-				GetOrSetReflectedFieldValue(GetReflectField(&availableCars[idxId], fieldsNames[j]), true, cellValue)
+			//fmt.Println(newCar, fieldsNames[j])
+			_, convErr := GetOrSetReflectedFieldValue(GetReflectField(&newCar, fieldsNames[j]), true, cellValue)
+			if convErr != nil {
+				rowErr = append(rowErr, strconv.Itoa(i+2))
+				fmt.Println("Error en la fila: " + strconv.Itoa(i+2) + ". Celda: " + cellPosition)
+				fmt.Println("Error en tipo de dato con: " + cellValue)
+				continue ROWS
 			}
 		}
-		if idxId == -1 {
+		if idxId > 0 {
+			newCar.Id = intId
+			newCar.PhotoURL = availableCars[idxId].PhotoURL
+			newCar.VerifiedURL = availableCars[idxId].VerifiedURL
+			availableCars[idxId] = newCar
+		} else {
 			newCar.Id = GetNewIntId(availableCars)
 			newCar.PhotoURL = ""
 			newCar.VerifiedURL = false
-			if newCar.Year > 0 {
+			if newCar.Year > -1 {
 				availableCars = append(availableCars, newCar)
 			}
 		}
 	}
 	//fmt.Println(availableCars)
-	return availableCars, nil
+	return availableCars, rowErr, nil
 }

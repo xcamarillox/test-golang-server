@@ -53,13 +53,22 @@ var PostImportHandler = func(c *fiber.Ctx) error {
 	fileAndPath := "./public/temp/" + file.Filename
 	c.SaveFile(file, fileAndPath)
 	var err error
-	availableCars, err = appAuxLib.ImportDartaFromExcelFile(fileAndPath, availableCars)
+	var rowErr []string
+	availableCars, rowErr, err = appAuxLib.ImportDataFromExcelFile(fileAndPath, availableCars)
 	if err != nil {
 		c.SendString("Error al importar los datos.")
 		return c.SendStatus(400)
 	}
 	os.Remove("./public/temp/" + file.Filename)
-	c.SendString("Los datos en el fichero de Excel han sido importados exitosamente.")
+	if len(rowErr) != 0 {
+		var leyenda string
+		for i := range rowErr {
+			leyenda = leyenda + rowErr[i] + " "
+		}
+		c.SendString("Se importaron algunos datos, aunque se tuvieron problemas con las siguientes filas:\n" + leyenda)
+	} else {
+		c.SendString("Los datos en el fichero de Excel han sido importados exitosamente.")
+	}
 	return c.SendStatus(202)
 }
 
