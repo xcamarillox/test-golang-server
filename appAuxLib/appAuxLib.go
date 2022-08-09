@@ -306,8 +306,9 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		Se crea un nuevo ID con los datos segun correspondan.
 	*/
 	rows = append(rows[1:])
+	//fmt.Println("--------------------------")
 	//fmt.Println("Rows:", rows)
-ROWS:
+	//ROWS:
 	for i, row := range rows {
 		if len(row) == 0 {
 			continue
@@ -326,16 +327,17 @@ ROWS:
 			}
 			//fmt.Println(cellPosition, cellValue)
 			//fmt.Println(newCar, fieldsNames[j])
-			//fmt.Println(newCar)
 			_, convErr := GetOrSetReflectedFieldValue(GetReflectField(&newCar, fieldsNames[j]), true, cellValue)
 			if convErr != nil || newCar.Year < 0 {
 				convErr = errors.New("Nuevo error")
-				rowErr = append(rowErr, strconv.Itoa(i+2))
-				fmt.Println("Error en la fila: " + strconv.Itoa(i+2) + ". Celda: " + cellPosition)
-				fmt.Println("Error en tipo de dato con: " + cellValue)
-				continue ROWS
+				rowErr = append(rowErr, cellPosition)
+				//fmt.Println("Error en la fila: " + strconv.Itoa(i+2) + ". Celda: " + cellPosition)
+				//fmt.Println("Error en tipo de dato con: " + cellValue)
+				//fmt.Println()
+				//continue ROWS
 			}
 		}
+		//fmt.Println(newCar)
 		if idxId < 0 {
 			newCar.Id = GetNewIntId(availableCars)
 			newCar.PhotoURL = ""

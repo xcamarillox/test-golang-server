@@ -65,7 +65,7 @@ var PostImportHandler = func(c *fiber.Ctx) error {
 		for i := range rowErr {
 			leyenda = leyenda + rowErr[i] + " "
 		}
-		c.SendString("Se importaron algunos datos, aunque se tuvieron problemas con las siguientes filas:\n" + leyenda)
+		c.SendString("Se importaron algunos datos, aunque se tuvieron problemas con las siguientes celdas:\n" + leyenda)
 	} else {
 		c.SendString("Los datos en el fichero de Excel han sido importados exitosamente.")
 	}
