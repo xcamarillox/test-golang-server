@@ -52,23 +52,37 @@ var PostImportHandler = func(c *fiber.Ctx) error {
 	file, _ := c.FormFile("excelFile")
 	fileAndPath := "./public/temp/" + file.Filename
 	c.SaveFile(file, fileAndPath)
+	defer os.Remove("./public/temp/" + file.Filename)
 	var err error
-	var rowErr []string
-	availableCars, rowErr, err = appAuxLib.ImportDataFromExcelFile(fileAndPath, availableCars)
+	var cellsWithErr []string
+	availableCars, cellsWithErr, err = appAuxLib.ImportDataFromExcelFile(fileAndPath, availableCars)
 	if err != nil {
 		c.SendString("Error al importar los datos.")
 		return c.SendStatus(400)
 	}
-	os.Remove("./public/temp/" + file.Filename)
-	if len(rowErr) != 0 {
+	if len(cellsWithErr) != 0 {
 		var leyenda string
-		for i := range rowErr {
-			leyenda = leyenda + rowErr[i] + " "
+		if len(cellsWithErr) == 1 {
+			leyenda = cellsWithErr[0]
 		}
-		c.SendString("Se importaron algunos datos, aunque se tuvieron problemas con las siguientes celdas:\n" + leyenda)
-	} else {
-		c.SendString("Los datos en el fichero de Excel han sido importados exitosamente.")
+		if len(cellsWithErr) > 1 {
+			for i := range cellsWithErr {
+				leyenda = leyenda + cellsWithErr[i]
+				if i < len(cellsWithErr)-2 {
+					leyenda = leyenda + ", "
+					continue
+				}
+				if i == len(cellsWithErr)-2 {
+					leyenda = leyenda + " y "
+				}
+			}
+		}
+		UrlOfFile, _ := appAuxLib.GetURLFileWithMarkedErrors(fileAndPath, cellsWithErr)
+		UrlOfFile = strings.Split(UrlOfFile, "?")[0]
+		c.SendString("Se importaron algunos datos, aunque se tuvieron problemas con las siguientes celdas:\n" + leyenda + "\nThe URL file:\n" + UrlOfFile)
+		return c.SendStatus(202)
 	}
+	c.SendString("Los datos en el fichero de Excel han sido importados exitosamente.")
 	return c.SendStatus(202)
 }
 
@@ -95,39 +109,40 @@ var PutIdClientUploadHandler = func(c *fiber.Ctx) error {
 
 var PutIdSetPhotoModeHandler = func(c *fiber.Ctx) error {
 	carIndex, _ := appAuxLib.GetIndexOfStringId(c.Params("id"), availableCars)
-	if c.Params("mode") == "client-upload" || c.Params("mode") == "server-upload" {
-		var photoURL string
-		var photoFileExtension string
-		if c.Params("mode") == "server-upload" {
-			responseCode, _ := appAuxLib.GetMeAReponseAndOrANewCar(c, appAuxLib.CheckCarIndexAndImage, carIndex)
-			if responseCode != 0 {
-				return c.SendStatus(responseCode)
-			}
-			photoFile, _ := c.FormFile("photoFile")
-			photoFileExtension, _ = appAuxLib.GetPhotoFileExtension(photoFile.Filename)
-			fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + photoFileExtension
-			pathAndFile := fmt.Sprintf("/photos/%s", fileName)
-			c.SaveFile(photoFile, "./public"+pathAndFile)
-			awsAuxLib.S3.UploadObject("./public"+pathAndFile, "levita-uploads-dev", fileName)
-			availableCars[carIndex].VerifiedURL = true
-			os.Remove("./public" + pathAndFile)
-		} else {
-			responseCode, _ := appAuxLib.GetMeAReponseAndOrANewCar(c, appAuxLib.CheckCarIndexAndPhotoFileNameField, carIndex)
-			if responseCode != 0 {
-				return c.SendStatus(responseCode)
-			}
-			photoFileNameFormValue := c.FormValue("photoFileName")
-			photoFileExtension, _ = appAuxLib.GetPhotoFileExtension(photoFileNameFormValue)
-			fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + photoFileExtension
-			photoURL, _ = awsAuxLib.S3.GetAPresignedURL("levita-uploads-dev", fileName)
-			availableCars[carIndex].VerifiedURL = false
-		}
-		c.SendString("El recurso fue editado con exito. Se generó la siguiente URL:\n" + photoURL)
-		availableCars[carIndex].PhotoURL = strings.Split(photoURL, "?")[0]
-	} else {
+	if c.Params("mode") != "client" && c.Params("mode") != "server" {
 		c.SendString("Method Not Allowed")
 		return c.SendStatus(405)
 	}
+	var photoURL string
+	var photoFileExtension string
+	if c.Params("mode") == "server" {
+		responseCode, _ := appAuxLib.GetMeAReponseAndOrANewCar(c, appAuxLib.CheckCarIndexAndImage, carIndex)
+		if responseCode != 0 {
+			return c.SendStatus(responseCode)
+		}
+		photoFile, _ := c.FormFile("photoFile")
+		photoFileExtension, _ = appAuxLib.GetPhotoFileExtension(photoFile.Filename)
+		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + photoFileExtension
+		pathAndFile := fmt.Sprintf("/photos/%s", fileName)
+		c.SaveFile(photoFile, "./public"+pathAndFile)
+		awsAuxLib.S3.UploadObject("./public"+pathAndFile, "levita-uploads-dev", fileName)
+		photoURL, _ = awsAuxLib.S3.GetTemporalUrl("levita-uploads-dev", fileName)
+		availableCars[carIndex].VerifiedURL = true
+		os.Remove("./public" + pathAndFile)
+	}
+	if c.Params("mode") == "client" {
+		responseCode, _ := appAuxLib.GetMeAReponseAndOrANewCar(c, appAuxLib.CheckCarIndexAndPhotoFileNameField, carIndex)
+		if responseCode != 0 {
+			return c.SendStatus(responseCode)
+		}
+		photoFileNameFormValue := c.FormValue("photoFileName")
+		photoFileExtension, _ = appAuxLib.GetPhotoFileExtension(photoFileNameFormValue)
+		fileName := "photo_" + strconv.Itoa(availableCars[carIndex].Id) + "." + photoFileExtension
+		photoURL, _ = awsAuxLib.S3.GetAPresignedURL("levita-uploads-dev", fileName)
+		availableCars[carIndex].VerifiedURL = false
+	}
+	availableCars[carIndex].PhotoURL = strings.Split(photoURL, "?")[0]
+	c.SendString("El recurso fue editado con exito. Se generó la siguiente URL:\n" + photoURL)
 	return c.SendStatus(202)
 }
 

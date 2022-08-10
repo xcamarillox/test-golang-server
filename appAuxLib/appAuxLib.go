@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"reto/awsAuxLib"
 	"strconv"
 	"strings"
 
@@ -67,9 +68,8 @@ func GetPhotoFileExtension(filename string) (ext string, errorString string) {
 	if extension != "jpg" && extension != "jpeg" && extension != "png" && extension != "gif" || len(splitFileName) < 2 {
 		if len(splitFileName) < 2 {
 			return "", "Error con el nombre de archivo. El archivo debe tener nombre y extensión."
-		} else {
-			return "", "Error en el tipo de archivo. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente."
 		}
+		return "", "Error en el tipo de archivo. Los tipos aceptados son jpg, jpeg, png o gif exclusivamente."
 	}
 	return extension, ""
 }
@@ -90,6 +90,10 @@ func GetMeAReponseAndOrANewCar(c *fiber.Ctx, mode int, carIndex int) (int, CarSp
 		}
 		if newCar.Year < 0 {
 			c.SendString("El año de manufactura del automóvil no puede ser negativo.")
+			return 400, newCar
+		}
+		if newCar.TransmissionType != "automatica" && newCar.TransmissionType != "manual" {
+			c.SendString("TransmissionType solo puede ser automatica o manual")
 			return 400, newCar
 		}
 	}
@@ -133,9 +137,8 @@ func GetMeAReponseAndOrANewCar(c *fiber.Ctx, mode int, carIndex int) (int, CarSp
 		if extension != "xlsx" || len(splitFileName) < 2 {
 			if len(splitFileName) < 2 {
 				c.SendString("Error con el nombre de archivo. El archivo debe tener nombre y extensión.")
-			} else {
-				c.SendString("Error en el tipo de archivo. Solo es aceptada la extensión xlsx.")
 			}
+			c.SendString("Error en el tipo de archivo. Solo es aceptada la extensión xlsx.")
 			return 400, newCar
 		}
 	}
@@ -159,13 +162,11 @@ func IndexToColumn(index int) (string, error) {
 		letterA, _ := IndexToColumn(int(math.Floor(float64(index-1) / 26)))
 		letterB, _ := IndexToColumn(index % 26)
 		return letterA + letterB, nil
-	} else {
-		if index == 0 {
-			index = 26
-		}
-		return string(l[index-1]), nil
 	}
-
+	if index == 0 {
+		index = 26
+	}
+	return string(l[index-1]), nil
 }
 
 // columnToIndex takes in A1 Notation & converts it to an index value
@@ -208,36 +209,32 @@ func GetOrSetReflectedFieldValue(structValue reflect.Value, isSetMode bool, stri
 			value, err := strconv.ParseInt(stringValue, 0, 0)
 			structValue.SetInt(value)
 			return nil, err
-		} else {
-			integerValue, _ := structValue.Interface().(int)
-			return integerValue, nil
 		}
+		integerValue, _ := structValue.Interface().(int)
+		return integerValue, nil
 	case "float32":
 		if isSetMode {
 			value, err := strconv.ParseFloat(stringValue, 32)
 			structValue.SetFloat(value)
 			return nil, err
-		} else {
-			floatValue, _ := structValue.Interface().(float32)
-			return floatValue, nil
 		}
+		floatValue, _ := structValue.Interface().(float32)
+		return floatValue, nil
 	case "string":
 		if isSetMode {
 			structValue.SetString(stringValue)
 			return nil, nil
-		} else {
-			stringValue, _ := structValue.Interface().(string)
-			return stringValue, nil
 		}
+		stringValue, _ := structValue.Interface().(string)
+		return stringValue, nil
 	case "bool":
 		if isSetMode {
 			value, err := strconv.ParseBool(stringValue)
 			structValue.SetBool(value)
 			return nil, err
-		} else {
-			boolValue, _ := structValue.Interface().(bool)
-			return boolValue, nil
 		}
+		boolValue, _ := structValue.Interface().(bool)
+		return boolValue, nil
 	default:
 		fmt.Println("Type is unknown!")
 		return "", errors.New("El tipo de dato es desconocido.")
@@ -273,14 +270,18 @@ func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File
 			f.SetCellValue("Sheet1", cellPosition, cellValue)
 		}
 	}
+	dvRange := excelize.NewDataValidation(true)
+	dvRange.Sqref = "G2:G100"
+	dvRange.SetDropList([]string{"manual", "automatica"})
+	f.AddDataValidation("Sheet1", dvRange)
 	return f
 }
 
 func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSpecs, []string, error) {
-	var rowErr []string
+	var cellsWithErr []string
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
-		return []CarSpecs{}, rowErr, err
+		return []CarSpecs{}, cellsWithErr, err
 	}
 	//Acá se revisa si la primer file corresponde a los campos(fields) del struct de datos
 	fieldsNames := GetCarSpecsFieldsNames()
@@ -289,16 +290,16 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		cellPosition := columnPosition + strconv.Itoa(1)
 		cellValue, err := f.GetCellValue("Sheet1", cellPosition)
 		if err != nil {
-			return []CarSpecs{}, rowErr, err
+			return []CarSpecs{}, cellsWithErr, err
 		}
 		if cellValue != fieldsNames[j] {
-			return []CarSpecs{}, rowErr, errors.New("la estructura del excel es incorrecta")
+			return []CarSpecs{}, cellsWithErr, errors.New("la estructura del excel es incorrecta")
 		}
 	}
 	rows, err := f.GetRows("Sheet1")
 	if err != nil {
 		fmt.Println(err)
-		return []CarSpecs{}, rowErr, err
+		return []CarSpecs{}, cellsWithErr, err
 	}
 	/*
 		Acá se revisa si el valor de la primer celda de la fila corresponde a un ID,
@@ -306,7 +307,6 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		Se crea un nuevo ID con los datos segun correspondan.
 	*/
 	rows = append(rows[1:])
-	//fmt.Println("--------------------------")
 	//fmt.Println("Rows:", rows)
 	//ROWS:
 	for i, row := range rows {
@@ -315,7 +315,9 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		}
 		idxId, _ := GetIndexOfStringId(row[0], availableCars)
 		newCar := CarSpecs{}
+		var errFlags []bool
 		for j := range fieldsNames {
+			errFlags = append(errFlags, false)
 			if j == 0 || j == 7 || j == 8 { //ID, PhotoURL, VerifiedURL
 				continue
 			}
@@ -325,16 +327,22 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 			if err != nil {
 				fmt.Println(err)
 			}
-			//fmt.Println(cellPosition, cellValue)
-			//fmt.Println(newCar, fieldsNames[j])
 			_, convErr := GetOrSetReflectedFieldValue(GetReflectField(&newCar, fieldsNames[j]), true, cellValue)
-			if convErr != nil || newCar.Year < 0 {
-				convErr = errors.New("Nuevo error")
-				rowErr = append(rowErr, cellPosition)
-				//fmt.Println("Error en la fila: " + strconv.Itoa(i+2) + ". Celda: " + cellPosition)
-				//fmt.Println("Error en tipo de dato con: " + cellValue)
-				//fmt.Println()
+			if convErr != nil {
+				//convErr = errors.New("Nuevo error")
+				errFlags[j] = true
+				cellsWithErr = append(cellsWithErr, cellPosition)
 				//continue ROWS
+			}
+			if fieldsNames[j] == "Year" && newCar.Year < 0 {
+				errFlags[j] = true
+				newCar.Year = 0
+				cellsWithErr = append(cellsWithErr, cellPosition)
+			}
+			if fieldsNames[j] == "TransmissionType" && newCar.TransmissionType != "automatica" && newCar.TransmissionType != "manual" {
+				errFlags[j] = true
+				newCar.TransmissionType = "manual"
+				cellsWithErr = append(cellsWithErr, cellPosition)
 			}
 		}
 		//fmt.Println(newCar)
@@ -343,13 +351,68 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 			newCar.PhotoURL = ""
 			newCar.VerifiedURL = false
 			availableCars = append(availableCars, newCar)
-		} else {
-			newCar.Id = availableCars[idxId].Id
-			newCar.PhotoURL = availableCars[idxId].PhotoURL
-			newCar.VerifiedURL = availableCars[idxId].VerifiedURL
-			availableCars[idxId] = newCar
+			continue
 		}
+		newCar.Id = availableCars[idxId].Id
+		newCar.PhotoURL = availableCars[idxId].PhotoURL
+		newCar.VerifiedURL = availableCars[idxId].VerifiedURL
+		/////
+		if errFlags[1] == true {
+			newCar.Make = availableCars[idxId].Make
+		}
+		if errFlags[2] == true {
+			newCar.Model = availableCars[idxId].Model
+		}
+		if errFlags[3] == true {
+			newCar.Year = availableCars[idxId].Year
+		}
+		if errFlags[4] == true {
+			newCar.EngineCapacity = availableCars[idxId].EngineCapacity
+		}
+		if errFlags[5] == true {
+			newCar.Color = availableCars[idxId].Color
+		}
+		if errFlags[6] == true {
+			newCar.TransmissionType = availableCars[idxId].TransmissionType
+		}
+		/////
+		availableCars[idxId] = newCar
 	}
 	//fmt.Println(availableCars)
-	return availableCars, rowErr, nil
+	return availableCars, cellsWithErr, nil
+}
+
+func GetURLFileWithMarkedErrors(filePath string, cellsWithErr []string) (string, error) {
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		fmt.Println(err)
+	}
+	style, err := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Color: "#FF0000",
+		},
+		Border: []excelize.Border{
+			{Type: "left", Color: "#FF0000", Style: 4},
+			{Type: "top", Color: "#FF0000", Style: 4},
+			{Type: "bottom", Color: "#FF0000", Style: 4},
+			{Type: "right", Color: "#FF0000", Style: 4},
+		},
+	})
+	if err != nil {
+		fmt.Println(err)
+	}
+	for j := range cellsWithErr {
+		err = f.SetCellStyle("Sheet1", cellsWithErr[j], cellsWithErr[j], style)
+	}
+	dvRange := excelize.NewDataValidation(true)
+	dvRange.Sqref = "G2:G100"
+	dvRange.SetDropList([]string{"manual", "automatica"})
+	f.AddDataValidation("Sheet1", dvRange)
+	if err := f.SaveAs("./public/temp/" + "Errors_1" + ".xlsx"); err != nil {
+		fmt.Println(err)
+	}
+	awsAuxLib.S3.UploadObject("./public/temp/"+"Errors_1"+".xlsx", "levita-uploads-dev", "Errors_1"+".xlsx")
+	UrlOfFile, _ := awsAuxLib.S3.GetTemporalUrl("levita-uploads-dev", "Errors_1"+".xlsx")
+	//fmt.Println(UrlOfFile)
+	return UrlOfFile, nil
 }
