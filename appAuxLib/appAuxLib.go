@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"reto/awsAuxLib"
 	"strconv"
@@ -257,9 +258,21 @@ func GetReflectField(obj interface{}, fieldName string) reflect.Value {
 func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File {
 	fieldsNames := GetCarSpecsFieldsNames()
 	f := excelize.NewFile()
+	style, _ := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Color: "#000000",
+		},
+		Border: []excelize.Border{
+			{Type: "left", Color: "#000000", Style: 1},
+			{Type: "top", Color: "#000000", Style: 1},
+			{Type: "bottom", Color: "#000000", Style: 1},
+			{Type: "right", Color: "#000000", Style: 1},
+		},
+	})
 	for j := range fieldsNames {
 		columnPosition, _ := IndexToColumn(j + 1)
 		cellPosition := columnPosition + strconv.Itoa(1)
+		f.SetCellStyle("Sheet1", cellPosition, cellPosition, style)
 		f.SetCellValue("Sheet1", cellPosition, fieldsNames[j])
 	}
 	for i := range availableCars {
@@ -267,6 +280,7 @@ func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File
 			columnPosition, _ := IndexToColumn(j + 1)
 			cellPosition := columnPosition + strconv.Itoa(2+i)
 			cellValue, _ := GetOrSetReflectedFieldValue(GetReflectField(&availableCars[i], fieldsNames[j]), false, "")
+			f.SetCellStyle("Sheet1", cellPosition, cellPosition, style)
 			f.SetCellValue("Sheet1", cellPosition, cellValue)
 		}
 	}
@@ -308,6 +322,17 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 	*/
 	rows = append(rows[1:])
 	//fmt.Println("Rows:", rows)
+	style, err := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Color: "#000000",
+		},
+		Border: []excelize.Border{
+			{Type: "left", Color: "#000000", Style: 1},
+			{Type: "top", Color: "#000000", Style: 1},
+			{Type: "bottom", Color: "#000000", Style: 1},
+			{Type: "right", Color: "#000000", Style: 1},
+		},
+	})
 	//ROWS:
 	for i, row := range rows {
 		if len(row) == 0 {
@@ -323,6 +348,7 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 			}
 			columnPosition, _ := IndexToColumn(j + 1)
 			cellPosition := columnPosition + strconv.Itoa(i+2)
+			err = f.SetCellStyle("Sheet1", cellPosition, cellPosition, style)
 			cellValue, err := f.GetCellValue("Sheet1", cellPosition)
 			if err != nil {
 				fmt.Println(err)
@@ -408,7 +434,9 @@ func GetURLFileWithMarkedErrors(filePath string, cellsWithErr []string) (string,
 	dvRange.Sqref = "G2:G100"
 	dvRange.SetDropList([]string{"manual", "automatica"})
 	f.AddDataValidation("Sheet1", dvRange)
-	if err := f.SaveAs("./public/temp/" + "Errors_1" + ".xlsx"); err != nil {
+	err = f.SaveAs("./public/temp/" + "Errors_1" + ".xlsx")
+	defer os.Remove("./public/temp/" + "Errors_1" + ".xlsx")
+	if err != nil {
 		fmt.Println(err)
 	}
 	awsAuxLib.S3.UploadObject("./public/temp/"+"Errors_1"+".xlsx", "levita-uploads-dev", "Errors_1"+".xlsx")
