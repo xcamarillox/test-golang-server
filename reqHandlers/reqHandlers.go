@@ -30,6 +30,7 @@ var PostRootHandler = func(c *fiber.Ctx) error {
 	newCar.PhotoURL = ""
 	newCar.VerifiedURL = false
 	availableCars = append(availableCars, newCar)
+	availableCars = appAuxLib.GetCarSpecsWithAPIData(availableCars) //Cylinders. FuelType
 	c.SendString("El recurso fue añadido con exito.")
 	return c.SendStatus(201)
 }
@@ -56,6 +57,7 @@ var PostImportHandler = func(c *fiber.Ctx) error {
 	var err error
 	var cellsWithErr []string
 	availableCars, cellsWithErr, err = appAuxLib.ImportDataFromExcelFile(fileAndPath, availableCars)
+	availableCars = appAuxLib.GetCarSpecsWithAPIData(availableCars)
 	if err != nil {
 		c.SendString("Error al importar los datos.")
 		return c.SendStatus(400)
@@ -152,6 +154,8 @@ var PutIdHandler = func(c *fiber.Ctx) error {
 	if responseCode != 0 {
 		return c.SendStatus(responseCode)
 	}
+	carToEdit.Cylinders = availableCars[carIndex].Cylinders
+	carToEdit.FuelType = availableCars[carIndex].FuelType
 	carToEdit.PhotoURL = availableCars[carIndex].PhotoURL
 	carToEdit.VerifiedURL = availableCars[carIndex].VerifiedURL
 	availableCars[carIndex] = carToEdit

@@ -19,8 +19,10 @@ func main() {
 			EngineCapacity:   1.8,
 			Color:            "roja",
 			TransmissionType: "automatica",
-			VerifiedURL:      false,
+			Cylinders:        4,
+			FuelType:         "gas",
 			PhotoURL:         "",
+			VerifiedURL:      false,
 		},
 		{
 			Id:               1,
@@ -30,16 +32,16 @@ func main() {
 			EngineCapacity:   2.5,
 			Color:            "blanca",
 			TransmissionType: "automatica",
-			VerifiedURL:      false,
+			Cylinders:        4,
+			FuelType:         "gas",
 			PhotoURL:         "",
+			VerifiedURL:      false,
 		},
 	})
 
 	app := fiber.New()
-
 	awsAuxLib.S3.Region = "us-east-1"
 	awsAuxLib.S3.NewSession(awsAuxLib.S3.Region)
-
 	app.Get("/", reqHandlers.GetRootHandler)
 	app.Post("/", reqHandlers.PostRootHandler)
 	app.Get("/export", reqHandlers.GetExportHandler)

@@ -9,8 +9,11 @@ import (
 	"reto/awsAuxLib"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/imroc/req/v3"
+	"github.com/joho/godotenv"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -31,8 +34,21 @@ type CarSpecs struct {
 	EngineCapacity   float32 `json:"engineCapacity"` //enlitros
 	Color            string  `json:"color"`
 	TransmissionType string  `json:"transmissionType"` // manual / automatica
+	Cylinders        int     `json:"cylinders"`
+	FuelType         string  `json:"fuelType"`
 	PhotoURL         string  `json:"photoURL"`
 	VerifiedURL      bool    `json:"verifiedURL"`
+}
+
+type ErrorMessageAPI struct {
+	Message string `json:"message"`
+}
+
+type CarAPIInfo struct {
+	Model     string `json:"model"`
+	Year      int    `json:"year"`
+	Cylinders int    `json:"cylinders"`
+	FuelType  string `json:"fuel_type"`
 }
 
 func GetIndexOfIntId(id int, availableCars []CarSpecs) int {
@@ -343,7 +359,7 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		var errFlags []bool
 		for j := range fieldsNames {
 			errFlags = append(errFlags, false)
-			if j == 0 || j == 7 || j == 8 { //ID, PhotoURL, VerifiedURL
+			if j == 0 || j == 7 || j == 8 || j == 9 || j == 10 { //ID, PhotoURL, VerifiedURL, Cylinders, FuelType
 				continue
 			}
 			columnPosition, _ := IndexToColumn(j + 1)
@@ -376,12 +392,16 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 			newCar.Id = GetNewIntId(availableCars)
 			newCar.PhotoURL = ""
 			newCar.VerifiedURL = false
+			newCar.Cylinders = 0
+			newCar.FuelType = ""
 			availableCars = append(availableCars, newCar)
 			continue
 		}
 		newCar.Id = availableCars[idxId].Id
 		newCar.PhotoURL = availableCars[idxId].PhotoURL
 		newCar.VerifiedURL = availableCars[idxId].VerifiedURL
+		newCar.Cylinders = availableCars[idxId].Cylinders
+		newCar.FuelType = availableCars[idxId].FuelType
 		/////
 		if errFlags[1] == true {
 			newCar.Make = availableCars[idxId].Make
@@ -443,4 +463,37 @@ func GetURLFileWithMarkedErrors(filePath string, cellsWithErr []string) (string,
 	UrlOfFile, _ := awsAuxLib.S3.GetTemporalUrl("levita-uploads-dev", "Errors_1"+".xlsx")
 	//fmt.Println(UrlOfFile)
 	return UrlOfFile, nil
+}
+
+func GetDataAPI(model string, year int) []CarAPIInfo {
+	godotenv.Load()
+	var carAPIInfo []CarAPIInfo
+	var errorMessageAPI ErrorMessageAPI
+	client := req.C().
+		SetUserAgent("my-custom-client"). // Chainable client settings.
+		SetTimeout(5 * time.Second)
+	client.R().
+		SetHeader("X-Api-Key", os.Getenv("API_KEY_API_NINJAS")). // Chainable request settings.
+		SetPathParam("model", model).
+		SetPathParam("year", strconv.Itoa(year)).
+		SetResult(&carAPIInfo).     // Unmarshal response body into userInfo automatically if status code is between 200 and 299.
+		SetError(&errorMessageAPI). // Unmarshal response body into errMsg automatically if status code >= 400.
+		EnableDump().               // Enable dump at request level, only print dump content if there is an error or some unknown situation occurs to help troubleshoot.
+		Get("https://api.api-ninjas.com/v1/cars?model={model}&year={year}")
+	return carAPIInfo
+}
+
+func GetCarSpecsWithAPIData(availableCars []CarSpecs) []CarSpecs {
+	for index, car := range availableCars {
+		if car.Model != "" && car.Year > -1 && (car.Cylinders == 0 || car.FuelType == "") {
+			fmt.Println("Solicitud en index:", index)
+			carInfo := GetDataAPI(car.Model, car.Year)
+			if len(carInfo) > 0 {
+				availableCars[index].Cylinders = carInfo[0].Cylinders
+				availableCars[index].FuelType = carInfo[0].FuelType
+			}
+		}
+	}
+	fmt.Println()
+	return availableCars
 }
