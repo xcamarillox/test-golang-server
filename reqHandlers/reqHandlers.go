@@ -18,6 +18,22 @@ var SetTestData = func(testData []appAuxLib.CarSpecs) {
 }
 
 var GetRootHandler = func(c *fiber.Ctx) error {
+	/*
+		type Extended struct {
+			Email string
+			//Password string
+		}
+		var interfaceInteger interface{}
+		var interfaceReflect interface{}
+		integer := 20
+		pointToStruct := reflect.ValueOf(integer)
+		interfaceInteger = integer
+		interfaceReflect = pointToStruct
+		fmt.Println(1, reflect.ValueOf(pointToStruct).Kind().String())
+		fmt.Println(2, reflect.ValueOf(interfaceInteger).Kind().String())
+		fmt.Println(3, reflect.ValueOf(interfaceReflect).Kind().String())
+		fmt.Println(4, interfaceReflect.(reflect.Value).Kind().String())
+	*/
 	return c.Status(fiber.StatusOK).JSON(availableCars)
 }
 

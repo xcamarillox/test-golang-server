@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"reflect"
 	"reto/awsAuxLib"
+	"reto/goHelpers"
 	"strconv"
 	"strings"
 	"time"
@@ -209,70 +209,8 @@ func ColumnToIndex(column string) (int, error) {
 	return index, nil
 }
 
-func GetCarSpecsFieldsNames() []string {
-	t := reflect.TypeOf(CarSpecs{})
-	names := make([]string, t.NumField())
-	for i := range names {
-		names[i] = t.Field(i).Name
-	}
-	return names
-}
-
-func GetOrSetReflectedFieldValue(structValue reflect.Value, isSetMode bool, stringValue string) (interface{}, error) {
-	//fmt.Println(structValue.Kind().String())
-	switch t := structValue.Kind().String(); t {
-	case "int":
-		if isSetMode {
-			value, err := strconv.ParseInt(stringValue, 0, 0)
-			structValue.SetInt(value)
-			return nil, err
-		}
-		integerValue, _ := structValue.Interface().(int)
-		return integerValue, nil
-	case "float32":
-		if isSetMode {
-			value, err := strconv.ParseFloat(stringValue, 32)
-			structValue.SetFloat(value)
-			return nil, err
-		}
-		floatValue, _ := structValue.Interface().(float32)
-		return floatValue, nil
-	case "string":
-		if isSetMode {
-			structValue.SetString(stringValue)
-			return nil, nil
-		}
-		stringValue, _ := structValue.Interface().(string)
-		return stringValue, nil
-	case "bool":
-		if isSetMode {
-			value, err := strconv.ParseBool(stringValue)
-			structValue.SetBool(value)
-			return nil, err
-		}
-		boolValue, _ := structValue.Interface().(bool)
-		return boolValue, nil
-	default:
-		fmt.Println("Type is unknown!")
-		return "", errors.New("El tipo de dato es desconocido.")
-	}
-}
-
-func GetReflectField(obj interface{}, fieldName string) reflect.Value {
-	pointToStruct := reflect.ValueOf(obj) // addressable
-	curStruct := pointToStruct.Elem()
-	if curStruct.Kind() != reflect.Struct {
-		fmt.Println("not struct")
-	}
-	curField := curStruct.FieldByName(fieldName) // type: reflect.Value
-	if !curField.IsValid() {
-		fmt.Println("not found:" + fieldName)
-	}
-	return curField
-}
-
 func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File {
-	fieldsNames := GetCarSpecsFieldsNames()
+	fieldsNames, _ := goHelpers.GetStructFieldNames(CarSpecs{})
 	f := excelize.NewFile()
 	style, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
@@ -295,7 +233,7 @@ func GetANewExcelizeFileOfCarSpecsSlice(availableCars []CarSpecs) *excelize.File
 		for j := range fieldsNames {
 			columnPosition, _ := IndexToColumn(j + 1)
 			cellPosition := columnPosition + strconv.Itoa(2+i)
-			cellValue, _ := GetOrSetReflectedFieldValue(GetReflectField(&availableCars[i], fieldsNames[j]), false, "")
+			cellValue, _, _ := goHelpers.GetStructFieldValue(&availableCars[i], fieldsNames[j])
 			f.SetCellStyle("Sheet1", cellPosition, cellPosition, style)
 			f.SetCellValue("Sheet1", cellPosition, cellValue)
 		}
@@ -314,7 +252,7 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		return []CarSpecs{}, cellsWithErr, err
 	}
 	//Acá se revisa si la primer file corresponde a los campos(fields) del struct de datos
-	fieldsNames := GetCarSpecsFieldsNames()
+	fieldsNames, _ := goHelpers.GetStructFieldNames(CarSpecs{})
 	for j := range fieldsNames {
 		columnPosition, _ := IndexToColumn(j + 1)
 		cellPosition := columnPosition + strconv.Itoa(1)
@@ -356,9 +294,8 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		}
 		idxId, _ := GetIndexOfStringId(row[0], availableCars)
 		newCar := CarSpecs{}
-		var errFlags []bool
 		for j := range fieldsNames {
-			errFlags = append(errFlags, false)
+			errFlags := false
 			if j == 0 || j == 7 || j == 8 || j == 9 || j == 10 { //ID, PhotoURL, VerifiedURL, Cylinders, FuelType
 				continue
 			}
@@ -369,22 +306,27 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 			if err != nil {
 				fmt.Println(err)
 			}
-			_, convErr := GetOrSetReflectedFieldValue(GetReflectField(&newCar, fieldsNames[j]), true, cellValue)
+			_, _, convErr := goHelpers.SetStructFieldValue(&newCar, fieldsNames[j], cellValue)
 			if convErr != nil {
 				//convErr = errors.New("Nuevo error")
-				errFlags[j] = true
+				errFlags = true
 				cellsWithErr = append(cellsWithErr, cellPosition)
 				//continue ROWS
 			}
 			if fieldsNames[j] == "Year" && newCar.Year < 0 {
-				errFlags[j] = true
+				errFlags = true
 				newCar.Year = 0
 				cellsWithErr = append(cellsWithErr, cellPosition)
 			}
 			if fieldsNames[j] == "TransmissionType" && newCar.TransmissionType != "automatica" && newCar.TransmissionType != "manual" {
-				errFlags[j] = true
+				errFlags = true
 				newCar.TransmissionType = "manual"
 				cellsWithErr = append(cellsWithErr, cellPosition)
+			}
+			if errFlags == true && idxId > -1 {
+				cellValue, cellTypeValue, _ := goHelpers.GetStructFieldValue(&availableCars[idxId], fieldsNames[j])
+				cellStringValue, _, _ := goHelpers.MakeAConversion(cellValue, goHelpers.ReflectToStringMode, cellTypeValue)
+				goHelpers.SetStructFieldValue(&newCar, fieldsNames[j], cellStringValue.(string))
 			}
 		}
 		//fmt.Println(newCar)
@@ -402,26 +344,6 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 		newCar.VerifiedURL = availableCars[idxId].VerifiedURL
 		newCar.Cylinders = availableCars[idxId].Cylinders
 		newCar.FuelType = availableCars[idxId].FuelType
-		/////
-		if errFlags[1] == true {
-			newCar.Make = availableCars[idxId].Make
-		}
-		if errFlags[2] == true {
-			newCar.Model = availableCars[idxId].Model
-		}
-		if errFlags[3] == true {
-			newCar.Year = availableCars[idxId].Year
-		}
-		if errFlags[4] == true {
-			newCar.EngineCapacity = availableCars[idxId].EngineCapacity
-		}
-		if errFlags[5] == true {
-			newCar.Color = availableCars[idxId].Color
-		}
-		if errFlags[6] == true {
-			newCar.TransmissionType = availableCars[idxId].TransmissionType
-		}
-		/////
 		availableCars[idxId] = newCar
 	}
 	//fmt.Println(availableCars)
