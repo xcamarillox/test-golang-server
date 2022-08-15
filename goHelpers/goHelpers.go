@@ -8,32 +8,17 @@ import (
 )
 
 const (
-	ValueToStringMode          = 1
-	GetReflectedFieldValueMode = 2
-	SetReflectedFieldValueMode = 3
-	ReflectToStringMode        = 4
-	integerType                = "int"
-	float32Type                = "float32"
-	boolType                   = "boolType"
-	stringType                 = "string"
+	IntegerType                = "int"
+	Float32Type                = "float32"
+	BoolType                   = "boolType"
+	StringType                 = "string"
+	valueToStringMode          = 1
+	getReflectedFieldValueMode = 2
+	setReflectedFieldValueMode = 3
 )
 
-func getReflectedField(myStruct interface{}, fieldName string) (reflect.Value, error) {
-	var curField reflect.Value
-	err := errors.New("Not a struct!")
-	//if isAStruct := CheckIfItsAStruct(myStruct); isAStruct {
-	pointToStruct := reflect.ValueOf(myStruct)
-	curStruct := pointToStruct.Elem()
-	curField = curStruct.FieldByName(fieldName)
-	if curField.IsValid() {
-		return curField, nil
-	}
-	err = errors.New(fieldName + " not a found!")
-	//}
-	return curField, err
-}
-
 func CheckIfItsAStruct(myStruct interface{}) bool {
+	//fmt.Println(reflect.ValueOf(myStruct).Kind(), reflect.ValueOf(myStruct).Type(), reflect.ValueOf(myStruct).Type().String())
 	if reflect.ValueOf(myStruct).Kind() != reflect.Struct {
 		return false
 	}
@@ -63,9 +48,8 @@ func GetStructFieldNames(myStruct interface{}) ([]string, error) {
 
 func GetStructFieldValue(myStruct interface{}, fieldName string) (interface{}, string, error) {
 	//if isAStruct := CheckIfItsAStruct(myStruct); isAStruct {
-	reflectedValue, err := getReflectedField(myStruct, fieldName)
-	value, typeString, err := MakeAConversion(reflectedValue, GetReflectedFieldValueMode, "")
-	return value, typeString, err
+	reflectedValue, _ := getReflectedField(&myStruct, fieldName)
+	return typeSwitchProcessing(reflectedValue, getReflectedFieldValueMode, "")
 	//}
 	//return myStruct, "", errors.New("Not a struct!")
 }
@@ -73,91 +57,98 @@ func GetStructFieldValue(myStruct interface{}, fieldName string) (interface{}, s
 func SetStructFieldValue(myStruct interface{}, fieldName string, fieldValue string) (interface{}, string, error) {
 	//if isAStruct := CheckIfItsAStruct(myStruct); isAStruct {
 	reflectedValue, err := getReflectedField(myStruct, fieldName)
-	value, typeString, err := MakeAConversion(reflectedValue, SetReflectedFieldValueMode, fieldValue)
-	return value, typeString, err
+	value, typeInString, err := typeSwitchProcessing(reflectedValue, setReflectedFieldValueMode, fieldValue)
+	return value, typeInString, err
 	//}
 	//return myStruct, "", errors.New("Not a struct!")
 }
 
-func MakeAConversion(conversionValue interface{}, conversionMode int, optionString string) (interface{}, string, error) {
+func ValueToStringConversion(valueToConvert interface{}, typeInString string) (string, string, error) {
+	//if isAStruct := CheckIfItsAStruct(myStruct); isAStruct {
+	value, typeInString, err := typeSwitchProcessing(valueToConvert, valueToStringMode, typeInString)
+	return value.(string), typeInString, err
+	//}
+	//return myStruct, "", errors.New("Not a struct!")
+}
+
+/////////////////PRIVATE FUNCTIONS/////////////////
+
+func getReflectedField(myStruct interface{}, fieldName string) (reflect.Value, error) {
+	var curField reflect.Value
+	err := errors.New("Not a struct!")
+	//if isAStruct := CheckIfItsAStruct(myStruct); isAStruct {
+	pointToStruct := reflect.ValueOf(myStruct)
+	curStruct := pointToStruct.Elem()
+	curField = curStruct.FieldByName(fieldName)
+	if curField.IsValid() {
+		return curField, nil
+	}
+	err = errors.New(fieldName + " not a found!")
+	//}
+	return curField, err
+}
+
+func typeSwitchProcessing(conversionValue interface{}, conversionMode int, optionString string) (interface{}, string, error) {
 	//ValueToStringMode: Args(valueWithSomeType, ValueToStringMode, when optionString="" value its inferred on conversionValue, when optionString="int" for example the value its forced to int)
 	//GetReflectedFieldValueMode: Args(reflect.Value, GetReflectedFieldValueMode, optionString = notUsedInThisModeString: "" for example)
 	//SetReflectedFieldValueMode: Args(reflect.Value, SetReflectedFieldValueMode, optionString = stringValueToSetToReflectedValue: "1234" for example)
-	typeString := optionString
-	if conversionMode == ValueToStringMode && optionString == "" {
-		typeString = reflect.ValueOf(conversionValue).Kind().String()
+	typeInString := optionString
+	if conversionMode == valueToStringMode && optionString == "" {
+		typeInString = reflect.ValueOf(conversionValue).Kind().String()
 	}
-	if conversionMode == ReflectToStringMode && optionString == "" {
-		//typeString = reflect.ValueOf(conversionValue).Kind().String()
+	if conversionMode == getReflectedFieldValueMode || conversionMode == setReflectedFieldValueMode {
+		typeInString = conversionValue.(reflect.Value).Kind().String()
 	}
-	if conversionMode == GetReflectedFieldValueMode || conversionMode == SetReflectedFieldValueMode {
-		typeString = conversionValue.(reflect.Value).Kind().String()
-	}
-	switch typeString {
-	case integerType:
-		if ValueToStringMode == conversionMode {
+	switch typeInString {
+	case IntegerType:
+		if valueToStringMode == conversionMode {
 			value := conversionValue.(int)
-			return strconv.Itoa(value), typeString, nil
+			return strconv.Itoa(value), typeInString, nil
 		}
-		if ReflectToStringMode == conversionMode {
-			value := conversionValue.(reflect.Value).Int()
-			return strconv.Itoa(int(value)), typeString, nil
+		if getReflectedFieldValueMode == conversionMode {
+			return int(conversionValue.(reflect.Value).Int()), typeInString, nil
 		}
-		if GetReflectedFieldValueMode == conversionMode {
-			return conversionValue, typeString, nil
-		}
-		if SetReflectedFieldValueMode == conversionMode {
+		if setReflectedFieldValueMode == conversionMode {
 			value, err := strconv.ParseInt(optionString, 0, 0)
 			conversionValue.(reflect.Value).SetInt(value)
-			return value, typeString, err
+			return value, typeInString, err
 		}
-	case float32Type:
-		if ValueToStringMode == conversionMode {
+	case Float32Type:
+		if valueToStringMode == conversionMode {
 			value := conversionValue.(float32)
-			return fmt.Sprintf("%f", value), typeString, nil
+			return fmt.Sprintf("%f", value), typeInString, nil
 		}
-		if ReflectToStringMode == conversionMode {
-			value := conversionValue.(reflect.Value).Float()
-			return fmt.Sprintf("%f", value), typeString, nil
+		if getReflectedFieldValueMode == conversionMode {
+			return float32(conversionValue.(reflect.Value).Float()), typeInString, nil
 		}
-		if GetReflectedFieldValueMode == conversionMode {
-			return conversionValue, typeString, nil
-		}
-		if SetReflectedFieldValueMode == conversionMode {
+		if setReflectedFieldValueMode == conversionMode {
 			value, err := strconv.ParseFloat(optionString, 32)
 			conversionValue.(reflect.Value).SetFloat(value)
-			return value, typeString, err
+			return value, typeInString, err
 		}
-	case boolType:
-		if ValueToStringMode == conversionMode {
+	case BoolType:
+		if valueToStringMode == conversionMode {
 			value := conversionValue.(bool)
-			return fmt.Sprintf("%t", value), typeString, nil
+			return fmt.Sprintf("%t", value), typeInString, nil
 		}
-		if ReflectToStringMode == conversionMode {
-			value := conversionValue.(reflect.Value).Bool()
-			return fmt.Sprintf("%t", value), typeString, nil
+		if getReflectedFieldValueMode == conversionMode {
+			return conversionValue.(reflect.Value).Bool(), typeInString, nil
 		}
-		if GetReflectedFieldValueMode == conversionMode {
-			return conversionValue, typeString, nil
-		}
-		if SetReflectedFieldValueMode == conversionMode {
+		if setReflectedFieldValueMode == conversionMode {
 			value, err := strconv.ParseBool(optionString)
 			conversionValue.(reflect.Value).SetBool(value)
-			return value, typeString, err
+			return value, typeInString, err
 		}
-	case stringType:
-		if ValueToStringMode == conversionMode {
-			return conversionValue.(string), typeString, nil
+	case StringType:
+		if valueToStringMode == conversionMode {
+			return conversionValue.(string), typeInString, nil
 		}
-		if ReflectToStringMode == conversionMode {
-			return conversionValue.(reflect.Value).String(), typeString, nil
+		if getReflectedFieldValueMode == conversionMode {
+			return conversionValue.(reflect.Value).String(), typeInString, nil
 		}
-		if GetReflectedFieldValueMode == conversionMode {
-			return conversionValue, typeString, nil
-		}
-		if SetReflectedFieldValueMode == conversionMode {
+		if setReflectedFieldValueMode == conversionMode {
 			conversionValue.(reflect.Value).SetString(optionString)
-			return optionString, typeString, nil
+			return optionString, typeInString, nil
 		}
 	default:
 		fmt.Println("Type is unknown or not implemented!")

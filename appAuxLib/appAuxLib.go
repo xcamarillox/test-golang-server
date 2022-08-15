@@ -7,6 +7,7 @@ import (
 	"os"
 	"reto/awsAuxLib"
 	"reto/goHelpers"
+
 	"strconv"
 	"strings"
 	"time"
@@ -306,7 +307,9 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 			if err != nil {
 				fmt.Println(err)
 			}
+			//fmt.Println(newCar, fieldsNames[j], "set")
 			_, _, convErr := goHelpers.SetStructFieldValue(&newCar, fieldsNames[j], cellValue)
+			//_, _, convErr := goHelpers.SetStructFieldValue(newCar, fieldsNames[j], cellValue)
 			if convErr != nil {
 				//convErr = errors.New("Nuevo error")
 				errFlags = true
@@ -324,9 +327,12 @@ func ImportDataFromExcelFile(filePath string, availableCars []CarSpecs) ([]CarSp
 				cellsWithErr = append(cellsWithErr, cellPosition)
 			}
 			if errFlags == true && idxId > -1 {
-				cellValue, cellTypeValue, _ := goHelpers.GetStructFieldValue(&availableCars[idxId], fieldsNames[j])
-				cellStringValue, _, _ := goHelpers.MakeAConversion(cellValue, goHelpers.ReflectToStringMode, cellTypeValue)
-				goHelpers.SetStructFieldValue(&newCar, fieldsNames[j], cellStringValue.(string))
+				//fmt.Println(availableCars[idxId], idxId)
+				cellValue, cellType, _ := goHelpers.GetStructFieldValue(&availableCars[idxId], fieldsNames[j])
+				//cellValue, cellType, _ := goHelpers.GetStructFieldValue(availableCars[idxId], fieldsNames[j])
+				cellStringValue, _, _ := goHelpers.ValueToStringConversion(cellValue, cellType)
+				goHelpers.SetStructFieldValue(&newCar, fieldsNames[j], cellStringValue)
+				//goHelpers.SetStructFieldValue(newCar, fieldsNames[j], cellStringValue)
 			}
 		}
 		//fmt.Println(newCar)
